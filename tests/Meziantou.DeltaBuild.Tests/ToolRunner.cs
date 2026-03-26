@@ -6,6 +6,61 @@ namespace Meziantou.DeltaBuild.Tests;
 
 internal static class ToolRunner
 {
+    public static async Task<ToolResult> RunToolRawAsync(
+        ITestOutputHelper output,
+        params string[] args)
+    {
+        // Find the tool assembly
+        var toolAssemblyPath = GetToolAssemblyPath();
+
+        var psi = new ProcessStartInfo
+        {
+            FileName = "dotnet",
+            WorkingDirectory = Path.GetDirectoryName(toolAssemblyPath),
+            RedirectStandardOutput = true,
+            RedirectStandardError = true,
+            UseShellExecute = false,
+            CreateNoWindow = true,
+        };
+
+        psi.ArgumentList.Add(toolAssemblyPath);
+        foreach (var arg in args)
+        {
+            psi.ArgumentList.Add(arg);
+        }
+
+        output.WriteLine($"Running: dotnet {toolAssemblyPath} {string.Join(' ', args)}");
+
+        using var process = new Process { StartInfo = psi };
+        var stdout = new StringBuilder();
+        var stderr = new StringBuilder();
+
+        process.OutputDataReceived += (_, e) =>
+        {
+            if (e.Data is not null)
+            {
+                output.WriteLine($"[stdout] {e.Data}");
+                stdout.AppendLine(e.Data);
+            }
+        };
+
+        process.ErrorDataReceived += (_, e) =>
+        {
+            if (e.Data is not null)
+            {
+                output.WriteLine($"[stderr] {e.Data}");
+                stderr.AppendLine(e.Data);
+            }
+        };
+
+        process.Start();
+        process.BeginOutputReadLine();
+        process.BeginErrorReadLine();
+        await process.WaitForExitAsync();
+
+        return new ToolResult(process.ExitCode, stdout.ToString(), stderr.ToString());
+    }
+
     public static async Task<string> RunToolAsync(
         ITestOutputHelper output,
         params string[] args)
@@ -61,8 +116,7 @@ internal static class ToolRunner
         if (process.ExitCode != 0)
         {
             var errorOutput = stderr.ToString();
-            Assert.Fail(
-                $"Tool exited with code {process.ExitCode}.\nStdout:\n{stdout}\nStderr:\n{errorOutput}");
+            Assert.Fail($"Tool exited with code {process.ExitCode}.\nStdout:\n{stdout}\nStderr:\n{errorOutput}");
         }
 
         return stdout.ToString();

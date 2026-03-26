@@ -275,7 +275,7 @@ public sealed class DeltaBuildTests(ITestOutputHelper output) : IAsyncDisposable
                 """)
         );
 
-        // Commit 2: Modify Directory.Build.props (full rebuild trigger)
+        // Commit 2: Modify Directory.Build.props (implicitly imported by all projects)
         repo.CreateCommit(
             ("Directory.Build.props", """
                 <Project>
@@ -296,7 +296,7 @@ public sealed class DeltaBuildTests(ITestOutputHelper output) : IAsyncDisposable
             "--head-commit", repo.Commits[^1]);
 
         var content = await File.ReadAllTextAsync(outputPath, TestContext.Current.CancellationToken);
-        // All projects should be included because Directory.Build.props is a full rebuild trigger
+        // All projects should be included because Directory.Build.props is imported by all projects
         InlineSnapshot.Validate(content.Trim(), """
             <Project Sdk="Microsoft.Build.Traversal">
               <Import Project="output.before.proj" Condition="Exists('output.before.proj')" />
@@ -336,7 +336,7 @@ public sealed class DeltaBuildTests(ITestOutputHelper output) : IAsyncDisposable
                 """)
         );
 
-        // Commit 2: Modify Directory.Build.props — normally a full rebuild trigger
+        // Commit 2: Modify Directory.Build.props — implicitly imported by MSBuild
         repo.CreateCommit(
             ("Directory.Build.props", """
                 <Project>
@@ -1312,6 +1312,94 @@ public sealed class DeltaBuildTests(ITestOutputHelper output) : IAsyncDisposable
         // App should be included because it transitively imports Deep.props
         // (App.csproj -> Common.props -> Shared.props -> Deep.props)
         // Unrelated should NOT be included
+        InlineSnapshot.Validate(content.Trim(), """
+            <Project Sdk="Microsoft.Build.Traversal">
+              <Import Project="output.before.proj" Condition="Exists('output.before.proj')" />
+              <ItemGroup>
+                <ProjectReference Include="src/App/App.csproj" />
+              </ItemGroup>
+              <Import Project="output.after.proj" Condition="Exists('output.after.proj')" />
+            </Project>
+            """);
+    }
+
+    [Fact]
+    public async Task CircularImport_HandledGracefully()
+    {
+        var repo = await CreateRepositoryAsync();
+
+        // Commit 1: Create a project with circular imports (A.props -> B.props -> A.props)
+        // MSBuild silently skips re-importing a file that is already in the import chain
+        repo.CreateCommit(
+            ("src/App/App.csproj", """
+                <Project Sdk="Microsoft.NET.Sdk">
+                  <Import Project="..\\..\\build\\A.props" />
+                  <PropertyGroup>
+                    <TargetFramework>net10.0</TargetFramework>
+                    <OutputType>Exe</OutputType>
+                  </PropertyGroup>
+                </Project>
+                """),
+            ("src/App/Program.cs", """
+                Console.WriteLine("Hello");
+                """),
+            ("build/A.props", """
+                <Project>
+                  <Import Project="B.props" />
+                </Project>
+                """),
+            ("build/B.props", """
+                <Project>
+                  <Import Project="A.props" />
+                </Project>
+                """),
+            ("src/Unrelated/Unrelated.csproj", """
+                <Project Sdk="Microsoft.NET.Sdk">
+                  <PropertyGroup>
+                    <TargetFramework>net10.0</TargetFramework>
+                    <OutputType>Library</OutputType>
+                  </PropertyGroup>
+                </Project>
+                """),
+            ("src/Unrelated/Class1.cs", """
+                namespace Unrelated;
+                public class Class1 { }
+                """),
+            ("dirs.proj", """
+                <Project Sdk="Microsoft.Build.Traversal">
+                  <ItemGroup>
+                    <ProjectReference Include="src/App/App.csproj" />
+                    <ProjectReference Include="src/Unrelated/Unrelated.csproj" />
+                  </ItemGroup>
+                </Project>
+                """)
+        );
+
+        // Commit 2: Modify B.props (part of the circular chain)
+        repo.CreateCommit(
+            ("build/B.props", """
+                <Project>
+                  <Import Project="A.props" />
+                  <PropertyGroup>
+                    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+                  </PropertyGroup>
+                </Project>
+                """)
+        );
+
+        var outputPath = Path.Combine(repo.RepositoryPath, "output.proj");
+        await RunTool(
+            "generate",
+            "--input", Path.Combine(repo.RepositoryPath, "dirs.proj"),
+            "--output", outputPath,
+            "--repository", repo.RepositoryPath,
+            "--base-commit", repo.Commits[^2],
+            "--head-commit", repo.Commits[^1],
+            "--full-rebuild-trigger", "**/non-existent-trigger.txt");
+
+        var content = await File.ReadAllTextAsync(outputPath, TestContext.Current.CancellationToken);
+        // App should be affected because it imports A.props -> B.props (which changed)
+        // Unrelated should NOT be affected
         InlineSnapshot.Validate(content.Trim(), """
             <Project Sdk="Microsoft.Build.Traversal">
               <Import Project="output.before.proj" Condition="Exists('output.before.proj')" />

@@ -7,14 +7,9 @@ internal static class DeltaBuildEngine
 {
     private static readonly string[] DefaultFullRebuildTriggerPatterns =
     [
-        "**/Directory.Build.props",
-        "**/Directory.Build.targets",
-        "**/Directory.Packages.props",
         "**/global.json",
         "**/nuget.config",
         "**/.editorconfig",
-        "**/*.props",
-        "**/*.targets",
     ];
 
     public static async Task<int> RunAsync(DeltaBuildOptions options, TextWriter log, CancellationToken cancellationToken)
