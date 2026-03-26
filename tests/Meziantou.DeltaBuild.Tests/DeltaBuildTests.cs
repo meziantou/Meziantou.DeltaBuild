@@ -359,11 +359,13 @@ public sealed class DeltaBuildTests(ITestOutputHelper output) : IAsyncDisposable
             "--full-rebuild-trigger", "**/custom-trigger.txt");
 
         var content = await File.ReadAllTextAsync(outputPath, TestContext.Current.CancellationToken);
-        // No projects should be affected because the custom trigger doesn't match
+        // App is affected because Directory.Build.props is implicitly imported by MSBuild
         InlineSnapshot.Validate(content.Trim(), """
             <Project Sdk="Microsoft.Build.Traversal">
               <Import Project="output.before.proj" Condition="Exists('output.before.proj')" />
-              <ItemGroup />
+              <ItemGroup>
+                <ProjectReference Include="src/App/App.csproj" />
+              </ItemGroup>
               <Import Project="output.after.proj" Condition="Exists('output.after.proj')" />
             </Project>
             """);
@@ -1135,6 +1137,186 @@ public sealed class DeltaBuildTests(ITestOutputHelper output) : IAsyncDisposable
               <Import Project="output.before.proj" Condition="Exists('output.before.proj')" />
               <ItemGroup>
                 <ProjectReference Include="src/Lib/Lib.csproj" />
+              </ItemGroup>
+              <Import Project="output.after.proj" Condition="Exists('output.after.proj')" />
+            </Project>
+            """);
+    }
+
+    [Fact]
+    public async Task ImportedPropsFileChanged_ProjectIsAffected()
+    {
+        var repo = await CreateRepositoryAsync();
+
+        // Commit 1: Create a project that imports a .props file
+        repo.CreateCommit(
+            ("src/App/App.csproj", """
+                <Project Sdk="Microsoft.NET.Sdk">
+                  <Import Project="..\..\build\Common.props" />
+                  <PropertyGroup>
+                    <TargetFramework>net10.0</TargetFramework>
+                    <OutputType>Exe</OutputType>
+                  </PropertyGroup>
+                </Project>
+                """),
+            ("src/App/Program.cs", """
+                Console.WriteLine("Hello");
+                """),
+            ("build/Common.props", """
+                <Project>
+                  <PropertyGroup>
+                    <Deterministic>true</Deterministic>
+                  </PropertyGroup>
+                </Project>
+                """),
+            ("src/Unrelated/Unrelated.csproj", """
+                <Project Sdk="Microsoft.NET.Sdk">
+                  <PropertyGroup>
+                    <TargetFramework>net10.0</TargetFramework>
+                    <OutputType>Library</OutputType>
+                  </PropertyGroup>
+                </Project>
+                """),
+            ("src/Unrelated/Class1.cs", """
+                namespace Unrelated;
+                public class Class1 { }
+                """),
+            ("dirs.proj", """
+                <Project Sdk="Microsoft.Build.Traversal">
+                  <ItemGroup>
+                    <ProjectReference Include="src/App/App.csproj" />
+                    <ProjectReference Include="src/Unrelated/Unrelated.csproj" />
+                  </ItemGroup>
+                </Project>
+                """)
+        );
+
+        // Commit 2: Modify the imported .props file
+        repo.CreateCommit(
+            ("build/Common.props", """
+                <Project>
+                  <PropertyGroup>
+                    <Deterministic>true</Deterministic>
+                    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+                  </PropertyGroup>
+                </Project>
+                """)
+        );
+
+        var outputPath = Path.Combine(repo.RepositoryPath, "output.proj");
+        // Use a custom trigger to avoid the default **/*.props matching build/Common.props
+        await RunTool(
+            "generate",
+            "--input", Path.Combine(repo.RepositoryPath, "dirs.proj"),
+            "--output", outputPath,
+            "--repository", repo.RepositoryPath,
+            "--base-commit", repo.Commits[^2],
+            "--head-commit", repo.Commits[^1],
+            "--full-rebuild-trigger", "**/non-existent-trigger.txt");
+
+        var content = await File.ReadAllTextAsync(outputPath, TestContext.Current.CancellationToken);
+        // App should be included because it imports Common.props which changed
+        // Unrelated should NOT be included
+        InlineSnapshot.Validate(content.Trim(), """
+            <Project Sdk="Microsoft.Build.Traversal">
+              <Import Project="output.before.proj" Condition="Exists('output.before.proj')" />
+              <ItemGroup>
+                <ProjectReference Include="src/App/App.csproj" />
+              </ItemGroup>
+              <Import Project="output.after.proj" Condition="Exists('output.after.proj')" />
+            </Project>
+            """);
+    }
+
+    [Fact]
+    public async Task RecursiveImports_DeepNestedPropsChanged_ProjectIsAffected()
+    {
+        var repo = await CreateRepositoryAsync();
+
+        // Commit 1: Create a chain: App.csproj -> build/Common.props -> build/Shared.props -> build/Deep.props
+        repo.CreateCommit(
+            ("src/App/App.csproj", """
+                <Project Sdk="Microsoft.NET.Sdk">
+                  <Import Project="..\..\build\Common.props" />
+                  <PropertyGroup>
+                    <TargetFramework>net10.0</TargetFramework>
+                    <OutputType>Exe</OutputType>
+                  </PropertyGroup>
+                </Project>
+                """),
+            ("src/App/Program.cs", """
+                Console.WriteLine("Hello");
+                """),
+            ("build/Common.props", """
+                <Project>
+                  <Import Project="Shared.props" />
+                </Project>
+                """),
+            ("build/Shared.props", """
+                <Project>
+                  <Import Project="Deep.props" />
+                </Project>
+                """),
+            ("build/Deep.props", """
+                <Project>
+                  <PropertyGroup>
+                    <Deterministic>true</Deterministic>
+                  </PropertyGroup>
+                </Project>
+                """),
+            ("src/Unrelated/Unrelated.csproj", """
+                <Project Sdk="Microsoft.NET.Sdk">
+                  <PropertyGroup>
+                    <TargetFramework>net10.0</TargetFramework>
+                    <OutputType>Library</OutputType>
+                  </PropertyGroup>
+                </Project>
+                """),
+            ("src/Unrelated/Class1.cs", """
+                namespace Unrelated;
+                public class Class1 { }
+                """),
+            ("dirs.proj", """
+                <Project Sdk="Microsoft.Build.Traversal">
+                  <ItemGroup>
+                    <ProjectReference Include="src/App/App.csproj" />
+                    <ProjectReference Include="src/Unrelated/Unrelated.csproj" />
+                  </ItemGroup>
+                </Project>
+                """)
+        );
+
+        // Commit 2: Modify the deeply nested .props file
+        repo.CreateCommit(
+            ("build/Deep.props", """
+                <Project>
+                  <PropertyGroup>
+                    <Deterministic>true</Deterministic>
+                    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+                  </PropertyGroup>
+                </Project>
+                """)
+        );
+
+        var outputPath = Path.Combine(repo.RepositoryPath, "output.proj");
+        await RunTool(
+            "generate",
+            "--input", Path.Combine(repo.RepositoryPath, "dirs.proj"),
+            "--output", outputPath,
+            "--repository", repo.RepositoryPath,
+            "--base-commit", repo.Commits[^2],
+            "--head-commit", repo.Commits[^1],
+            "--full-rebuild-trigger", "**/non-existent-trigger.txt");
+
+        var content = await File.ReadAllTextAsync(outputPath, TestContext.Current.CancellationToken);
+        // App should be included because it transitively imports Deep.props
+        // (App.csproj -> Common.props -> Shared.props -> Deep.props)
+        // Unrelated should NOT be included
+        InlineSnapshot.Validate(content.Trim(), """
+            <Project Sdk="Microsoft.Build.Traversal">
+              <Import Project="output.before.proj" Condition="Exists('output.before.proj')" />
+              <ItemGroup>
+                <ProjectReference Include="src/App/App.csproj" />
               </ItemGroup>
               <Import Project="output.after.proj" Condition="Exists('output.after.proj')" />
             </Project>

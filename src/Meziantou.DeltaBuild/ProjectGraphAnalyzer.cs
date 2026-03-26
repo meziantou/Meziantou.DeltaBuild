@@ -83,6 +83,12 @@ internal static class ProjectGraphAnalyzer
                 // Also include the project file itself
                 ownedFiles.Add(projectPath);
 
+                // Include imported files (.props, .targets, etc.)
+                foreach (var importPath in node.ProjectInstance.ImportPaths)
+                {
+                    ownedFiles.Add(NormalizePath(importPath));
+                }
+
                 // Collect forward dependencies
                 foreach (var dep in node.ProjectReferences)
                 {
@@ -148,11 +154,11 @@ internal static class ProjectGraphAnalyzer
 
     internal static string NormalizePath(string path)
     {
-        return FullPath.FromPath(path).ToString().Replace('\\', '/');
+        return FullPath.FromPath(path).Value.Replace('\\', '/');
     }
 
     internal static string NormalizePath(FullPath path)
     {
-        return path.ToString().Replace('\\', '/');
+        return path.Value.Replace('\\', '/');
     }
 }
