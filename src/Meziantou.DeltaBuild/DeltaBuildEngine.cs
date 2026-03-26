@@ -9,6 +9,8 @@ internal static class DeltaBuildEngine
     [
         "**/global.json",
         "**/nuget.config",
+        "**/NuGet.config",
+        "**/NuGet.Config",
         "**/.editorconfig",
     ];
 

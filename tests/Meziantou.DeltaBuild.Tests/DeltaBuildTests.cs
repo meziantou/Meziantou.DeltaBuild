@@ -309,6 +309,83 @@ public sealed class DeltaBuildTests(ITestOutputHelper output) : IAsyncDisposable
             """);
     }
 
+    [Theory]
+    [InlineData("nuget.config")]
+    [InlineData("NuGet.config")]
+    [InlineData("NuGet.Config")]
+    public async Task FullRebuildTrigger_NuGetConfigCasing_AllProjectsIncluded(string nugetConfigFileName)
+    {
+        var repo = await CreateRepositoryAsync();
+
+        // Commit 1: Create two projects
+        repo.CreateCommit(
+            ("src/App1/App1.csproj", """
+                <Project Sdk="Microsoft.NET.Sdk">
+                  <PropertyGroup>
+                    <TargetFramework>net10.0</TargetFramework>
+                    <OutputType>Exe</OutputType>
+                  </PropertyGroup>
+                </Project>
+                """),
+            ("src/App1/Program.cs", """
+                Console.WriteLine("App1");
+                """),
+            ("src/App2/App2.csproj", """
+                <Project Sdk="Microsoft.NET.Sdk">
+                  <PropertyGroup>
+                    <TargetFramework>net10.0</TargetFramework>
+                    <OutputType>Exe</OutputType>
+                  </PropertyGroup>
+                </Project>
+                """),
+            ("src/App2/Program.cs", """
+                Console.WriteLine("App2");
+                """),
+            ("dirs.proj", """
+                <Project Sdk="Microsoft.Build.Traversal">
+                  <ItemGroup>
+                    <ProjectReference Include="src/App1/App1.csproj" />
+                    <ProjectReference Include="src/App2/App2.csproj" />
+                  </ItemGroup>
+                </Project>
+                """)
+        );
+
+        // Commit 2: Add/modify the NuGet config file with the given casing
+        repo.CreateCommit(
+            (nugetConfigFileName, """
+                <?xml version="1.0" encoding="utf-8"?>
+                <configuration>
+                  <packageSources>
+                    <add key="nuget.org" value="https://api.nuget.org/v3/index.json" />
+                  </packageSources>
+                </configuration>
+                """)
+        );
+
+        var outputPath = Path.Combine(repo.RepositoryPath, "output.proj");
+        await RunTool(
+            "generate",
+            "--input", Path.Combine(repo.RepositoryPath, "dirs.proj"),
+            "--output", outputPath,
+            "--repository", repo.RepositoryPath,
+            "--base-commit", repo.Commits[^2],
+            "--head-commit", repo.Commits[^1]);
+
+        var content = await File.ReadAllTextAsync(outputPath, TestContext.Current.CancellationToken);
+        // All projects should be included because nuget config is a full-rebuild trigger
+        InlineSnapshot.Validate(content.Trim(), """
+            <Project Sdk="Microsoft.Build.Traversal">
+              <Import Project="output.before.proj" Condition="Exists('output.before.proj')" />
+              <ItemGroup>
+                <ProjectReference Include="src/App1/App1.csproj" />
+                <ProjectReference Include="src/App2/App2.csproj" />
+              </ItemGroup>
+              <Import Project="output.after.proj" Condition="Exists('output.after.proj')" />
+            </Project>
+            """);
+    }
+
     [Fact]
     public async Task CustomFullRebuildTrigger_ReplacesDefaults()
     {
