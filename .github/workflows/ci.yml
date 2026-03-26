@@ -1,0 +1,56 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v6
+
+    - name: Setup .NET
+      uses: actions/setup-dotnet@v5
+      with:
+        global-json-file: global.json
+
+    - name: Build
+      run: dotnet build Meziantou.DeltaBuild.slnx --configuration Release
+
+    - name: Test
+      run: dotnet test Meziantou.DeltaBuild.slnx --configuration Release --no-build
+
+    - name: Pack
+      run: dotnet pack src/Meziantou.DeltaBuild/Meziantou.DeltaBuild.csproj --configuration Release --no-build --output artifacts
+
+    - name: Upload artifacts
+      uses: actions/upload-artifact@v7
+      with:
+        name: nuget
+        path: artifacts/*.nupkg
+
+  publish:
+    needs: build
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    steps:
+    - name: Download artifacts
+      uses: actions/download-artifact@v8
+      with:
+        name: nuget
+        path: artifacts
+
+    - name: NuGet login (OIDC → temp API key)
+      uses: NuGet/login@v1
+      id: login
+      with:
+        user: meziantou
+
+    - name: Push to NuGet.org
+      run: dotnet nuget push "artifacts/*.nupkg" --source https://api.nuget.org/v3/index.json

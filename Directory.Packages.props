@@ -1,0 +1,19 @@
+<Project>
+  <PropertyGroup>
+    <ManagePackageVersionsCentrally>true</ManagePackageVersionsCentrally>
+    <NoWarn>$(NoWarn);NU1903</NoWarn>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageVersion Include="Microsoft.Build" Version="18.4.0" />
+    <PackageVersion Include="Microsoft.Build.Locator" Version="1.11.2" />
+    <PackageVersion Include="Microsoft.VisualStudio.SolutionPersistence" Version="1.0.52" />
+    <PackageVersion Include="Meziantou.Framework.FullPath" Version="1.1.17" />
+    <PackageVersion Include="Meziantou.Framework.Globbing" Version="2.1.1" />
+    <PackageVersion Include="System.CommandLine" Version="2.0.5" />
+  </ItemGroup>
+  <ItemGroup>
+    <PackageVersion Include="Meziantou.Framework.InlineSnapshotTesting" Version="3.3.41" />
+    <PackageVersion Include="Meziantou.Framework.TemporaryDirectory" Version="1.0.36" />
+    <PackageVersion Include="xunit.v3" Version="3.2.2" />
+  </ItemGroup>
+</Project>
