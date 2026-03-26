@@ -449,6 +449,143 @@ public sealed class DeltaBuildTests(ITestOutputHelper output) : IAsyncDisposable
     }
 
     [Fact]
+    public async Task MultipleFullRebuildTriggers_AnyMatchTriggersFullRebuild()
+    {
+        var repo = await CreateRepositoryAsync();
+
+        // Commit 1: Create two projects
+        repo.CreateCommit(
+            ("src/App1/App1.csproj", """
+                <Project Sdk="Microsoft.NET.Sdk">
+                  <PropertyGroup>
+                    <TargetFramework>net10.0</TargetFramework>
+                    <OutputType>Exe</OutputType>
+                  </PropertyGroup>
+                </Project>
+                """),
+            ("src/App1/Program.cs", """
+                Console.WriteLine("App1");
+                """),
+            ("src/App2/App2.csproj", """
+                <Project Sdk="Microsoft.NET.Sdk">
+                  <PropertyGroup>
+                    <TargetFramework>net10.0</TargetFramework>
+                    <OutputType>Exe</OutputType>
+                  </PropertyGroup>
+                </Project>
+                """),
+            ("src/App2/Program.cs", """
+                Console.WriteLine("App2");
+                """),
+            ("dirs.proj", """
+                <Project Sdk="Microsoft.Build.Traversal">
+                  <ItemGroup>
+                    <ProjectReference Include="src/App1/App1.csproj" />
+                    <ProjectReference Include="src/App2/App2.csproj" />
+                  </ItemGroup>
+                </Project>
+                """)
+        );
+
+        // Commit 2: Modify a file matching the second trigger pattern
+        repo.CreateCommit(
+            ("eng/Build.ps1", "# build script")
+        );
+
+        var outputPath = Path.Combine(repo.RepositoryPath, "output.proj");
+        await RunTool(
+            "generate",
+            "--input", Path.Combine(repo.RepositoryPath, "dirs.proj"),
+            "--output", outputPath,
+            "--repository", repo.RepositoryPath,
+            "--base-commit", repo.Commits[^2],
+            "--head-commit", repo.Commits[^1],
+            "--full-rebuild-trigger", ".github/**",
+            "--full-rebuild-trigger", "eng/**");
+
+        var content = await File.ReadAllTextAsync(outputPath, TestContext.Current.CancellationToken);
+        // All projects should be included because eng/Build.ps1 matches the "eng/**" trigger
+        InlineSnapshot.Validate(content.Trim(), """
+            <Project Sdk="Microsoft.Build.Traversal">
+              <Import Project="output.before.proj" Condition="Exists('output.before.proj')" />
+              <ItemGroup>
+                <ProjectReference Include="src/App1/App1.csproj" />
+                <ProjectReference Include="src/App2/App2.csproj" />
+              </ItemGroup>
+              <Import Project="output.after.proj" Condition="Exists('output.after.proj')" />
+            </Project>
+            """);
+    }
+
+    [Fact]
+    public async Task FullRebuildTrigger_DirectoryGlobPattern_MatchesFilesInDirectory()
+    {
+        var repo = await CreateRepositoryAsync();
+
+        // Commit 1: Create two projects
+        repo.CreateCommit(
+            ("src/App1/App1.csproj", """
+                <Project Sdk="Microsoft.NET.Sdk">
+                  <PropertyGroup>
+                    <TargetFramework>net10.0</TargetFramework>
+                    <OutputType>Exe</OutputType>
+                  </PropertyGroup>
+                </Project>
+                """),
+            ("src/App1/Program.cs", """
+                Console.WriteLine("App1");
+                """),
+            ("src/App2/App2.csproj", """
+                <Project Sdk="Microsoft.NET.Sdk">
+                  <PropertyGroup>
+                    <TargetFramework>net10.0</TargetFramework>
+                    <OutputType>Exe</OutputType>
+                  </PropertyGroup>
+                </Project>
+                """),
+            ("src/App2/Program.cs", """
+                Console.WriteLine("App2");
+                """),
+            ("dirs.proj", """
+                <Project Sdk="Microsoft.Build.Traversal">
+                  <ItemGroup>
+                    <ProjectReference Include="src/App1/App1.csproj" />
+                    <ProjectReference Include="src/App2/App2.csproj" />
+                  </ItemGroup>
+                </Project>
+                """)
+        );
+
+        // Commit 2: Modify a file inside the .github directory
+        repo.CreateCommit(
+            (".github/workflows/ci.yml", "# CI workflow")
+        );
+
+        var outputPath = Path.Combine(repo.RepositoryPath, "output.proj");
+        await RunTool(
+            "generate",
+            "--input", Path.Combine(repo.RepositoryPath, "dirs.proj"),
+            "--output", outputPath,
+            "--repository", repo.RepositoryPath,
+            "--base-commit", repo.Commits[^2],
+            "--head-commit", repo.Commits[^1],
+            "--full-rebuild-trigger", ".github/**");
+
+        var content = await File.ReadAllTextAsync(outputPath, TestContext.Current.CancellationToken);
+        // All projects should be included because .github/workflows/ci.yml matches the ".github/**" trigger
+        InlineSnapshot.Validate(content.Trim(), """
+            <Project Sdk="Microsoft.Build.Traversal">
+              <Import Project="output.before.proj" Condition="Exists('output.before.proj')" />
+              <ItemGroup>
+                <ProjectReference Include="src/App1/App1.csproj" />
+                <ProjectReference Include="src/App2/App2.csproj" />
+              </ItemGroup>
+              <Import Project="output.after.proj" Condition="Exists('output.after.proj')" />
+            </Project>
+            """);
+    }
+
+    [Fact]
     public async Task IncludeGlobFilter_FiltersProjects()
     {
         var repo = await CreateRepositoryAsync();
