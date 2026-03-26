@@ -61,7 +61,27 @@ internal static class DeltaBuildEngine
             return 0;
         }
 
-        // Step 5: Check full-rebuild triggers
+        // Step 5: Skip projects whose files don't exist on disk
+        var missingProjects = projectPaths.Where(p => !File.Exists(p)).ToList();
+        if (missingProjects.Count > 0)
+        {
+            foreach (var missing in missingProjects)
+            {
+                log.WriteLine($"  Warning: Project file not found, skipping: {missing}");
+            }
+
+            projectPaths = projectPaths.Where(p => File.Exists(p)).ToList();
+            log.WriteLine($"After skipping missing projects: {projectPaths.Count} project(s)");
+
+            if (projectPaths.Count == 0)
+            {
+                log.WriteLine("No projects to analyze after removing missing projects.");
+                await OutputWriter.WriteAsync(options, input, [], log, cancellationToken);
+                return 0;
+            }
+        }
+
+        // Step 6: Check full-rebuild triggers
         var triggerPatterns = options.FullRebuildTriggerPatterns.Length > 0
             ? options.FullRebuildTriggerPatterns
             : DefaultFullRebuildTriggerPatterns;
@@ -73,10 +93,10 @@ internal static class DeltaBuildEngine
             return 0;
         }
 
-        // Step 6: Build project graph and analyze
+        // Step 7: Build project graph and analyze
         var projectInfos = ProjectGraphAnalyzer.Analyze(projectPaths, log);
 
-        // Step 7: Determine directly affected projects
+        // Step 8: Determine directly affected projects
         var normalizedChangedFiles = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         foreach (var file in changedFiles)
         {
@@ -101,7 +121,7 @@ internal static class DeltaBuildEngine
 
         log.WriteLine($"Directly affected: {directlyAffected.Count} project(s)");
 
-        // Step 8: Find transitive dependents
+        // Step 9: Find transitive dependents
         var allAffected = ProjectGraphAnalyzer.GetTransitiveDependents(directlyAffected, projectInfos);
 
         // For SingleProject input, include all projects discovered by the graph as candidates.
@@ -130,7 +150,7 @@ internal static class DeltaBuildEngine
             log.WriteLine($"  Affected: {project}");
         }
 
-        // Step 9: Write output
+        // Step 10: Write output
         await OutputWriter.WriteAsync(options, input, affectedInputProjects, log, cancellationToken);
 
         return 0;
