@@ -10,6 +10,22 @@ internal static class GitHelper
         return result.Trim();
     }
 
+    public static async Task<string> GetDefaultBranchAsync(string repositoryPath, CancellationToken cancellationToken = default)
+    {
+        // Returns something like "refs/remotes/origin/main"
+        var result = await RunGitAsync(repositoryPath, ["symbolic-ref", "refs/remotes/origin/HEAD"], cancellationToken);
+        var fullRef = result.Trim();
+
+        // Strip "refs/remotes/" prefix to get "origin/main"
+        const string prefix = "refs/remotes/";
+        if (fullRef.StartsWith(prefix, StringComparison.Ordinal))
+        {
+            return fullRef[prefix.Length..];
+        }
+
+        return fullRef;
+    }
+
     public static async Task<string> GetMergeBaseAsync(string repositoryPath, string commitA, string commitB, CancellationToken cancellationToken = default)
     {
         var result = await RunGitAsync(repositoryPath, ["merge-base", commitA, commitB], cancellationToken);

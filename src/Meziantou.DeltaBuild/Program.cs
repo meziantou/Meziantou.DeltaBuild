@@ -43,10 +43,9 @@ internal static class Program
             Description = "The base commit SHA (default: auto-detected via merge-base)",
         };
 
-        var baseBranchOption = new Option<string>("--base-branch")
+        var baseBranchOption = new Option<string?>("--base-branch")
         {
-            Description = "The base branch for merge-base detection (default: origin/main)",
-            DefaultValueFactory = _ => "origin/main",
+            Description = "The base branch for merge-base detection (default: auto-detected from remote)",
         };
 
         var includeOption = new Option<string[]>("--include")
@@ -82,7 +81,7 @@ internal static class Program
                 RepositoryPath = parseResult.GetValue(repositoryOption)!,
                 HeadCommit = parseResult.GetValue(headCommitOption),
                 BaseCommit = parseResult.GetValue(baseCommitOption),
-                BaseBranch = parseResult.GetValue(baseBranchOption)!,
+                BaseBranch = parseResult.GetValue(baseBranchOption),
                 IncludePatterns = parseResult.GetValue(includeOption) ?? [],
                 FullRebuildTriggerPatterns = parseResult.GetValue(fullRebuildTriggerOption) ?? [],
             };

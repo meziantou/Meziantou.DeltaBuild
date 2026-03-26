@@ -27,8 +27,15 @@ internal static class DeltaBuildEngine
         var baseCommit = options.BaseCommit;
         if (string.IsNullOrEmpty(baseCommit))
         {
-            log.WriteLine($"No --base-commit provided, computing merge-base with {options.BaseBranch}");
-            baseCommit = await GitHelper.GetMergeBaseAsync(repositoryPath, headCommit, options.BaseBranch, cancellationToken);
+            var baseBranch = options.BaseBranch;
+            if (string.IsNullOrEmpty(baseBranch))
+            {
+                baseBranch = await GitHelper.GetDefaultBranchAsync(repositoryPath, cancellationToken);
+                log.WriteLine($"Auto-detected base branch: {baseBranch}");
+            }
+
+            log.WriteLine($"No --base-commit provided, computing merge-base with {baseBranch}");
+            baseCommit = await GitHelper.GetMergeBaseAsync(repositoryPath, headCommit, baseBranch, cancellationToken);
         }
 
         log.WriteLine($"Comparing {baseCommit} -> {headCommit}");
