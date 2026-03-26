@@ -17,10 +17,10 @@ internal static class GitHelper
         var fullRef = result.Trim();
 
         // Strip "refs/remotes/" prefix to get "origin/main"
-        const string prefix = "refs/remotes/";
-        if (fullRef.StartsWith(prefix, StringComparison.Ordinal))
+        const string Prefix = "refs/remotes/";
+        if (fullRef.StartsWith(Prefix, StringComparison.Ordinal))
         {
-            return fullRef[prefix.Length..];
+            return fullRef[Prefix.Length..];
         }
 
         return fullRef;
