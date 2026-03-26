@@ -61,11 +61,6 @@ internal static class Program
             AllowMultipleArgumentsPerToken = true,
         };
 
-        var failOnLoadErrorOption = new Option<bool>("--fail-on-load-error")
-        {
-            Description = "Fail with a non-zero exit code if any MSBuild project fails to load (default: false)",
-        };
-
         var generateCommand = new Command("generate", "Generate a subset solution/build file for incremental CI builds")
         {
             inputOption,
@@ -76,7 +71,6 @@ internal static class Program
             baseBranchOption,
             includeOption,
             fullRebuildTriggerOption,
-            failOnLoadErrorOption,
         };
 
         generateCommand.SetAction(async (parseResult, cancellationToken) =>
@@ -91,7 +85,6 @@ internal static class Program
                 BaseBranch = parseResult.GetValue(baseBranchOption)!,
                 IncludePatterns = parseResult.GetValue(includeOption) ?? [],
                 FullRebuildTriggerPatterns = parseResult.GetValue(fullRebuildTriggerOption) ?? [],
-                FailOnLoadError = parseResult.GetValue(failOnLoadErrorOption),
             };
 
             return await DeltaBuildEngine.RunAsync(options, Console.Out, cancellationToken);

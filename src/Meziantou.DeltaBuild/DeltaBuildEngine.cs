@@ -79,7 +79,7 @@ internal static class DeltaBuildEngine
         }
 
         // Step 6: Build project graph and analyze
-        var projectInfos = ProjectGraphAnalyzer.Analyze(projectPaths, options.FailOnLoadError, log);
+        var projectInfos = ProjectGraphAnalyzer.Analyze(projectPaths, log);
 
         // Step 7: Determine directly affected projects
         var normalizedChangedFiles = new HashSet<string>(StringComparer.OrdinalIgnoreCase);

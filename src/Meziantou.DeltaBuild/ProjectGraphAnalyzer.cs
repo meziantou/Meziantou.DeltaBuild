@@ -24,38 +24,14 @@ internal static class ProjectGraphAnalyzer
         "TypeScriptCompile",
     };
 
-    public static Dictionary<string, ProjectInfo> Analyze(IReadOnlyList<FullPath> projectPaths, bool failOnLoadError = false, TextWriter? log = null)
+    public static Dictionary<string, ProjectInfo> Analyze(IReadOnlyList<FullPath> projectPaths, TextWriter? log = null)
     {
         log?.WriteLine($"Building project graph for {projectPaths.Count} entry point(s)...");
 
         var entryPoints = projectPaths
             .Select(p => new ProjectGraphEntryPoint(p));
 
-        ProjectGraph graph;
-        try
-        {
-            graph = new ProjectGraph(entryPoints);
-        }
-        catch (Exception ex)
-        {
-            if (failOnLoadError)
-                throw;
-
-            log?.WriteLine($"Warning: Failed to construct project graph: {ex.Message}");
-            log?.WriteLine("Treating all input projects as affected.");
-
-            // Fallback: return all projects as having no file info (will be treated as affected)
-            return projectPaths.ToDictionary(
-                p => NormalizePath(p),
-                p => new ProjectInfo
-                {
-                    ProjectPath = NormalizePath(p),
-                    OwnedFiles = [],
-                    ReferencedProjectPaths = [],
-                    ReferencingProjectPaths = [],
-                },
-                StringComparer.OrdinalIgnoreCase);
-        }
+        var graph = new ProjectGraph(entryPoints);
 
         log?.WriteLine($"Graph built in {graph.ConstructionMetrics.ConstructionTime.TotalMilliseconds:F0}ms: {graph.ConstructionMetrics.NodeCount} nodes, {graph.ConstructionMetrics.EdgeCount} edges");
 
@@ -101,9 +77,6 @@ internal static class ProjectGraphAnalyzer
                 }
                 catch (Exception ex)
                 {
-                    if (failOnLoadError)
-                        throw;
-
                     log?.WriteLine($"Warning: Failed to extract file items from {projectPath}: {ex.Message}");
                 }
 

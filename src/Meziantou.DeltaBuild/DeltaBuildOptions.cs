@@ -10,5 +10,4 @@ internal sealed class DeltaBuildOptions
     public string BaseBranch { get; init; } = "origin/main";
     public string[] IncludePatterns { get; init; } = [];
     public string[] FullRebuildTriggerPatterns { get; init; } = [];
-    public bool FailOnLoadError { get; init; }
 }

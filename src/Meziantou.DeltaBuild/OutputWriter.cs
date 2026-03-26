@@ -169,7 +169,7 @@ internal static class OutputWriter
 
     private static string GetFolderPath(SolutionFolderModel folder)
     {
-        return folder.Name ?? "";
+        return folder.Path ?? ("/" + folder.Name + "/");
     }
 
     private static string ToRelativePath(FullPath path, FullPath basePath)
