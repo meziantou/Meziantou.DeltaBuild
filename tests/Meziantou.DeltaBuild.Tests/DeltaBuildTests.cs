@@ -762,6 +762,63 @@ public sealed class DeltaBuildTests(ITestOutputHelper output) : IAsyncDisposable
     }
 
     [Fact]
+    public async Task TraversalOutput_CustomImportNames()
+    {
+        var repo = await CreateRepositoryAsync();
+
+        // Commit 1: Create a project
+        repo.CreateCommit(
+            ("src/App/App.csproj", """
+                <Project Sdk="Microsoft.NET.Sdk">
+                  <PropertyGroup>
+                    <TargetFramework>net10.0</TargetFramework>
+                    <OutputType>Exe</OutputType>
+                  </PropertyGroup>
+                </Project>
+                """),
+            ("src/App/Program.cs", """
+                Console.WriteLine("App");
+                """),
+            ("dirs.proj", """
+                <Project Sdk="Microsoft.Build.Traversal">
+                  <ItemGroup>
+                    <ProjectReference Include="src/App/App.csproj" />
+                  </ItemGroup>
+                </Project>
+                """)
+        );
+
+        // Commit 2: Modify the source file
+        repo.CreateCommit(
+            ("src/App/Program.cs", """
+                Console.WriteLine("Modified");
+                """)
+        );
+
+        var outputPath = Path.Combine(repo.RepositoryPath, "output.proj");
+        await RunTool(
+            "generate",
+            "--input", Path.Combine(repo.RepositoryPath, "dirs.proj"),
+            "--output", outputPath,
+            "--repository", repo.RepositoryPath,
+            "--base-commit", repo.Commits[^2],
+            "--head-commit", repo.Commits[^1],
+            "--traversal-before-import", "custom.before.props",
+            "--traversal-after-import", "custom.after.targets");
+
+        var content = await File.ReadAllTextAsync(outputPath, TestContext.Current.CancellationToken);
+        InlineSnapshot.Validate(content.Trim(), """
+            <Project Sdk="Microsoft.Build.Traversal">
+              <Import Project="custom.before.props" Condition="Exists('custom.before.props')" />
+              <ItemGroup>
+                <ProjectReference Include="src/App/App.csproj" />
+              </ItemGroup>
+              <Import Project="custom.after.targets" Condition="Exists('custom.after.targets')" />
+            </Project>
+            """);
+    }
+
+    [Fact]
     public async Task MixedProjectTypes_CsprojAndFsproj()
     {
         var repo = await CreateRepositoryAsync();

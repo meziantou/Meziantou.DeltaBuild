@@ -36,7 +36,7 @@ internal static class OutputWriter
         }
         else
         {
-            WriteTraversal(affectedProjectPaths, outputPath, log);
+            WriteTraversal(options, affectedProjectPaths, outputPath, log);
         }
 
         log.WriteLine($"Output written to {outputPath}");
@@ -217,6 +217,7 @@ internal static class OutputWriter
     }
 
     private static void WriteTraversal(
+        DeltaBuildOptions options,
         IReadOnlyList<FullPath> affectedProjectPaths,
         FullPath outputPath,
         TextWriter log)
@@ -225,8 +226,8 @@ internal static class OutputWriter
         outputPath.CreateParentDirectory();
 
         var outputFileName = Path.GetFileName(outputPath.Value);
-        var beforeImportPath = Path.GetFileNameWithoutExtension(outputFileName) + ".before.proj";
-        var afterImportPath = Path.GetFileNameWithoutExtension(outputFileName) + ".after.proj";
+        var beforeImportPath = options.TraversalBeforeImport ?? (Path.GetFileNameWithoutExtension(outputFileName) + ".before.proj");
+        var afterImportPath = options.TraversalAfterImport ?? (Path.GetFileNameWithoutExtension(outputFileName) + ".after.proj");
 
         var doc = new XDocument(
             new XElement("Project",

@@ -98,6 +98,8 @@ This is useful for quickly checking which projects your local modifications affe
 | `--full-rebuild-trigger` | | *(none)* | Glob patterns for files that trigger a **full rebuild of all projects**. When any changed file matches, every project is included in the output. Repeatable. Replaces defaults when provided. |
 | `--hierarchical-rebuild-trigger` | | `**/global.json`, `**/nuget.config`, `**/NuGet.config`, `**/NuGet.Config`, `**/.editorconfig` | Glob patterns for files that trigger a rebuild of **projects in the same folder hierarchy**. For example, changing `src/global.json` rebuilds projects under `src/` but not under `tests/`. A match at the repository root affects all projects. Repeatable. Replaces defaults when provided. |
 | `--engine` | | `MSBuild` | The analysis engine to use (see below). |
+| `--traversal-before-import` | | `<output-name>.before.proj` | Path of the import added before the `<ProjectReference>` items in the generated Traversal SDK file. |
+| `--traversal-after-import` | | `<output-name>.after.proj` | Path of the import added after the `<ProjectReference>` items in the generated Traversal SDK file. |
 
 ### Analysis engines
 

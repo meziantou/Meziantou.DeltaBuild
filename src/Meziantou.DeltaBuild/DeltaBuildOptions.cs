@@ -13,4 +13,6 @@ internal sealed class DeltaBuildOptions
     public string[] FullRebuildTriggerPatterns { get; init; } = [];
     public string[] HierarchicalRebuildTriggerPatterns { get; init; } = [];
     public AnalysisEngine Engine { get; init; } = AnalysisEngine.MSBuild;
+    public string? TraversalBeforeImport { get; init; }
+    public string? TraversalAfterImport { get; init; }
 }

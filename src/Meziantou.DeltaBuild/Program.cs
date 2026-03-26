@@ -77,6 +77,16 @@ internal static class Program
             DefaultValueFactory = _ => AnalysisEngine.MSBuild,
         };
 
+        var traversalBeforeImportOption = new Option<string?>("--traversal-before-import")
+        {
+            Description = "Path of the import added before the ProjectReference items in the generated Traversal SDK file (default: <output-name>.before.proj)",
+        };
+
+        var traversalAfterImportOption = new Option<string?>("--traversal-after-import")
+        {
+            Description = "Path of the import added after the ProjectReference items in the generated Traversal SDK file (default: <output-name>.after.proj)",
+        };
+
         var generateCommand = new Command("generate", "Generate a subset solution/build file for incremental CI builds")
         {
             inputOption,
@@ -90,6 +100,8 @@ internal static class Program
             fullRebuildTriggerOption,
             hierarchicalRebuildTriggerOption,
             engineOption,
+            traversalBeforeImportOption,
+            traversalAfterImportOption,
         };
 
         generateCommand.SetAction(async (parseResult, cancellationToken) =>
@@ -107,6 +119,8 @@ internal static class Program
                 FullRebuildTriggerPatterns = parseResult.GetValue(fullRebuildTriggerOption) ?? [],
                 HierarchicalRebuildTriggerPatterns = parseResult.GetValue(hierarchicalRebuildTriggerOption) ?? [],
                 Engine = parseResult.GetValue(engineOption),
+                TraversalBeforeImport = parseResult.GetValue(traversalBeforeImportOption),
+                TraversalAfterImport = parseResult.GetValue(traversalAfterImportOption),
             };
 
             return await DeltaBuildEngine.RunAsync(options, Console.Out, cancellationToken);
