@@ -1,0 +1,147 @@
+# Meziantou.DeltaBuild
+
+A .NET CLI tool that generates subset solution or build files for **incremental CI builds** in monorepos. Instead of building everything on every pull request, DeltaBuild analyzes git changes and the MSBuild project dependency graph to determine which projects are actually affected, then produces a filtered solution/build file containing only those projects.
+
+## Why?
+
+In a monorepo, a single repository hosts many projects. A typical CI pipeline rebuilds *all* of them on every commit or pull request, even when a change only touches one leaf project. This wastes time and compute resources.
+
+**Meziantou.DeltaBuild** solves this by:
+
+1. Comparing two git commits to find changed files.
+2. Building the MSBuild project dependency graph from your solution or traversal file.
+3. Mapping changed files to the projects that own them (source files, imports, `.props`/`.targets`, `.editorconfig`, NuGet configs, etc.).
+4. Including transitive dependents — if a library changed, every project that references it (directly or indirectly) is included.
+5. Writing a new solution/build file that contains **only the affected projects**.
+
+Your CI pipeline then builds this smaller file instead of the full solution, dramatically reducing build and test times for most pull requests.
+
+## Installation
+
+```bash
+dotnet tool install --global Meziantou.DeltaBuild
+```
+
+Or as a local tool:
+
+```bash
+dotnet tool install Meziantou.DeltaBuild
+```
+
+## Usage
+
+```bash
+Meziantou.DeltaBuild generate --input <path> --output <path> [options]
+```
+
+### Basic example
+
+```bash
+Meziantou.DeltaBuild generate \
+  --input MyRepo.sln \
+  --output DeltaBuild.sln
+```
+
+This compares `HEAD` against the merge-base of the default remote branch, finds changed files, determines which projects are affected, and writes a filtered `DeltaBuild.sln`.
+
+### CI example (Azure DevOps / GitHub Actions)
+
+```bash
+Meziantou.DeltaBuild generate \
+  --input dirs.proj \
+  --output delta.proj \
+  --repository . \
+  --base-commit $(git merge-base origin/main HEAD) \
+  --head-commit HEAD
+```
+
+Then build only the affected projects:
+
+```bash
+dotnet build delta.proj
+dotnet test delta.proj
+```
+
+### Local development (working tree)
+
+Compare your uncommitted changes (staged, unstaged, and untracked files) against a branch:
+
+```bash
+Meziantou.DeltaBuild generate \
+  --input MyRepo.sln \
+  --output delta.sln \
+  --base-commit $(git merge-base origin/main HEAD) \
+  --working-tree
+```
+
+This is useful for quickly checking which projects your local modifications affect before committing.
+
+## Parameters
+
+### Required
+
+| Parameter | Alias | Description |
+|-----------|-------|-------------|
+| `--input` | `-i` | Path to the input file. Supported formats: `.sln`, `.slnx`, `.proj` (Traversal SDK), or a single project file (`.csproj`, `.fsproj`, `.vbproj`). |
+| `--output` | `-o` | Path for the output file. The format is inferred from the file extension: `.sln`, `.slnx`, `.proj`, `.json`, or `.txt`. |
+
+### Optional
+
+| Parameter | Alias | Default | Description |
+|-----------|-------|---------|-------------|
+| `--repository` | `-r` | `.` (current directory) | Path to the git repository root. |
+| `--head-commit` | | `HEAD` | The head commit SHA to compare. Ignored when `--working-tree` is set. |
+| `--base-commit` | | Auto-detected | The base commit SHA. When omitted, computed via `git merge-base` using `--base-branch`. |
+| `--base-branch` | | Auto-detected from remote | The base branch name used for merge-base detection (e.g., `main`, `origin/main`). |
+| `--working-tree` | | `false` | Compare the base commit against the current working directory instead of a commit. Includes staged, unstaged, and untracked files. When set, `--head-commit` is ignored. |
+| `--include` | | *(all projects)* | Glob patterns to filter which projects to consider. Repeatable. Only projects matching at least one pattern are included. |
+| `--full-rebuild-trigger` | | *(none)* | Glob patterns for files that trigger a **full rebuild of all projects**. When any changed file matches, every project is included in the output. Repeatable. Replaces defaults when provided. |
+| `--hierarchical-rebuild-trigger` | | `**/global.json`, `**/nuget.config`, `**/NuGet.config`, `**/NuGet.Config`, `**/.editorconfig` | Glob patterns for files that trigger a rebuild of **projects in the same folder hierarchy**. For example, changing `src/global.json` rebuilds projects under `src/` but not under `tests/`. A match at the repository root affects all projects. Repeatable. Replaces defaults when provided. |
+| `--engine` | | `MSBuild` | The analysis engine to use (see below). |
+
+### Analysis engines
+
+| Engine | Description |
+|--------|-------------|
+| `MSBuild` | Default. Passes individual project paths as entry points to the MSBuild Static Graph API. Works with all input formats. |
+| `RoslynWorkspace` | Uses Roslyn's `MSBuildWorkspace` to load projects. More compatible because Roslyn sees files added dynamically by MSBuild targets (e.g., source generators). Also tracks `.editorconfig` and `.globalconfig` via `AnalyzerConfigDocuments`. |
+| `StaticGraph` | Passes the input file (solution or traversal) as a single entry point to MSBuild's `ProjectGraph`, letting MSBuild handle solution/traversal parsing natively with parallel evaluation. Inspired by [Petabridge/Incrementalist](https://github.com/petabridge/Incrementalist). |
+
+## How it works
+
+1. **Resolve commits** — Determines the base and head commits. If not provided, head defaults to `HEAD` and base is computed via `git merge-base` with the default branch.
+2. **Get changed files** — Runs `git diff --name-only` between the two commits.
+3. **Parse input** — Reads the solution, traversal, or project file to discover the list of projects.
+4. **Filter projects** — Applies `--include` glob patterns if provided.
+5. **Check full-rebuild triggers** — If any changed file matches a `--full-rebuild-trigger` pattern, all projects are included and analysis stops.
+6. **Check hierarchical-rebuild triggers** — For each changed file matching a `--hierarchical-rebuild-trigger` pattern, projects in the same folder hierarchy are marked as affected. For example, `src/nuget.config` affects projects under `src/`, while a root-level `nuget.config` affects all projects.
+7. **Analyze project graph** — Uses the selected engine to build the dependency graph and determine which files each project owns (source files, imports, `.props`, `.targets`, `.editorconfig`, `.globalconfig`, etc.).
+8. **Determine directly affected projects** — A project is directly affected if any of its owned files appears in the changed file list, or if it was flagged by a hierarchical trigger.
+9. **Find transitive dependents** — Walks up the dependency graph to include every project that directly or indirectly references an affected project.
+10. **Write output** — Produces the filtered solution/build file containing only the affected projects.
+
+## Output formats
+
+| Extension | Format |
+|-----------|--------|
+| `.sln` | Visual Studio solution (v12) |
+| `.slnx` | XML-based solution (Visual Studio 2022+) |
+| `.proj` | MSBuild Traversal SDK project with `<ProjectReference>` items. Automatically imports `<output>.before.proj` and `<output>.after.proj` if they exist, allowing you to inject custom MSBuild logic. |
+| `.json` | JSON array of affected project paths |
+| `.txt` | One project path per line |
+
+## Tracked file types
+
+DeltaBuild tracks the following MSBuild item types as owned files for each project:
+
+- `Compile` — Source code files (`.cs`, `.fs`, `.vb`, etc.)
+- `Content`, `None`, `EmbeddedResource` — Static assets and resources
+- `AdditionalFiles` — Files passed to analyzers
+- `EditorConfigFiles` — `.editorconfig` files discovered by MSBuild
+- `GlobalAnalyzerConfigFiles` — `.globalconfig` files
+- `Page`, `ApplicationDefinition`, `Resource` — WPF/XAML items
+- `TypeScriptCompile` — TypeScript files
+- **Import paths** — `.props`, `.targets`, and other imported MSBuild files (via `ProjectInstance.ImportPaths`)
+- **Project file itself** — The `.csproj`/`.fsproj`/`.vbproj` file
+
+The `RoslynWorkspace` engine additionally tracks files exposed through Roslyn's `Documents`, `AdditionalDocuments`, and `AnalyzerConfigDocuments` collections.

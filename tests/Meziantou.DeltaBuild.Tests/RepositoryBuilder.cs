@@ -35,6 +35,22 @@ internal sealed class RepositoryBuilder : IAsyncDisposable
         return this;
     }
 
+    /// <summary>
+    /// Writes files to the working directory without committing them.
+    /// Useful for testing working-tree comparison mode.
+    /// </summary>
+    public RepositoryBuilder WriteFiles(params (string Path, string Content)[] files)
+    {
+        foreach (var (path, content) in files)
+        {
+            var fullPath = Path.Combine(_directory.FullPath, path);
+            Directory.CreateDirectory(Path.GetDirectoryName(fullPath)!);
+            File.WriteAllText(fullPath, content);
+        }
+
+        return this;
+    }
+
     public async Task InitializeAsync()
     {
         RunGit("init");

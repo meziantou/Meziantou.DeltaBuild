@@ -1487,4 +1487,1306 @@ public sealed class DeltaBuildTests(ITestOutputHelper output) : IAsyncDisposable
             </Project>
             """);
     }
+
+    [Theory]
+    [InlineData("RoslynWorkspace")]
+    [InlineData("StaticGraph")]
+    public async Task RoslynWorkspace_SingleProject_FileChanged_ProjectIncluded(string engine)
+    {
+        var repo = await CreateRepositoryAsync();
+
+        // Commit 1: Create a project with a source file
+        repo.CreateCommit(
+            ("global.json", """
+                {
+                  "msbuild-sdks": {
+                    "Microsoft.Build.Traversal": "4.1.82"
+                  }
+                }
+                """),
+            ("src/App/App.csproj", """
+                <Project Sdk="Microsoft.NET.Sdk">
+                  <PropertyGroup>
+                    <TargetFramework>net10.0</TargetFramework>
+                    <OutputType>Exe</OutputType>
+                  </PropertyGroup>
+                </Project>
+                """),
+            ("src/App/Program.cs", """
+                Console.WriteLine("Hello");
+                """),
+            ("dirs.proj", """
+                <Project Sdk="Microsoft.Build.Traversal">
+                  <ItemGroup>
+                    <ProjectReference Include="src/App/App.csproj" />
+                  </ItemGroup>
+                </Project>
+                """)
+        );
+
+        // Commit 2: Modify the source file
+        repo.CreateCommit(
+            ("src/App/Program.cs", """
+                Console.WriteLine("Hello, World!");
+                """)
+        );
+
+        var outputPath = Path.Combine(repo.RepositoryPath, "output.proj");
+        await RunTool(
+            "generate",
+            "--input", Path.Combine(repo.RepositoryPath, "dirs.proj"),
+            "--output", outputPath,
+            "--repository", repo.RepositoryPath,
+            "--base-commit", repo.Commits[^2],
+            "--head-commit", repo.Commits[^1],
+            "--engine", engine);
+
+        var content = await File.ReadAllTextAsync(outputPath, TestContext.Current.CancellationToken);
+        InlineSnapshot.Validate(content.Trim(), """
+            <Project Sdk="Microsoft.Build.Traversal">
+              <Import Project="output.before.proj" Condition="Exists('output.before.proj')" />
+              <ItemGroup>
+                <ProjectReference Include="src/App/App.csproj" />
+              </ItemGroup>
+              <Import Project="output.after.proj" Condition="Exists('output.after.proj')" />
+            </Project>
+            """);
+    }
+
+    [Theory]
+    [InlineData("RoslynWorkspace")]
+    [InlineData("StaticGraph")]
+    public async Task RoslynWorkspace_TransitiveDependents_AreIncluded(string engine)
+    {
+        var repo = await CreateRepositoryAsync();
+
+        // Commit 1: Create Lib -> App dependency chain
+        repo.CreateCommit(
+            ("global.json", """
+                {
+                  "msbuild-sdks": {
+                    "Microsoft.Build.Traversal": "4.1.82"
+                  }
+                }
+                """),
+            ("src/Lib/Lib.csproj", """
+                <Project Sdk="Microsoft.NET.Sdk">
+                  <PropertyGroup>
+                    <TargetFramework>net10.0</TargetFramework>
+                  </PropertyGroup>
+                </Project>
+                """),
+            ("src/Lib/MyClass.cs", """
+                namespace Lib;
+                public class MyClass { }
+                """),
+            ("src/App/App.csproj", """
+                <Project Sdk="Microsoft.NET.Sdk">
+                  <PropertyGroup>
+                    <TargetFramework>net10.0</TargetFramework>
+                    <OutputType>Exe</OutputType>
+                  </PropertyGroup>
+                  <ItemGroup>
+                    <ProjectReference Include="../Lib/Lib.csproj" />
+                  </ItemGroup>
+                </Project>
+                """),
+            ("src/App/Program.cs", """
+                Console.WriteLine("App");
+                """),
+            ("src/Unrelated/Unrelated.csproj", """
+                <Project Sdk="Microsoft.NET.Sdk">
+                  <PropertyGroup>
+                    <TargetFramework>net10.0</TargetFramework>
+                  </PropertyGroup>
+                </Project>
+                """),
+            ("src/Unrelated/Dummy.cs", """
+                namespace Unrelated;
+                public class Dummy { }
+                """),
+            ("dirs.proj", """
+                <Project Sdk="Microsoft.Build.Traversal">
+                  <ItemGroup>
+                    <ProjectReference Include="src/App/App.csproj" />
+                    <ProjectReference Include="src/Lib/Lib.csproj" />
+                    <ProjectReference Include="src/Unrelated/Unrelated.csproj" />
+                  </ItemGroup>
+                </Project>
+                """)
+        );
+
+        // Commit 2: Modify only the Lib source file
+        repo.CreateCommit(
+            ("src/Lib/MyClass.cs", """
+                namespace Lib;
+                public class MyClass { public int Value { get; set; } }
+                """)
+        );
+
+        var outputPath = Path.Combine(repo.RepositoryPath, "output.proj");
+        await RunTool(
+            "generate",
+            "--input", Path.Combine(repo.RepositoryPath, "dirs.proj"),
+            "--output", outputPath,
+            "--repository", repo.RepositoryPath,
+            "--base-commit", repo.Commits[^2],
+            "--head-commit", repo.Commits[^1],
+            "--engine", engine);
+
+        var content = await File.ReadAllTextAsync(outputPath, TestContext.Current.CancellationToken);
+        // Both Lib and App should be affected (App depends on Lib), Unrelated should not
+        InlineSnapshot.Validate(content.Trim(), """
+            <Project Sdk="Microsoft.Build.Traversal">
+              <Import Project="output.before.proj" Condition="Exists('output.before.proj')" />
+              <ItemGroup>
+                <ProjectReference Include="src/App/App.csproj" />
+                <ProjectReference Include="src/Lib/Lib.csproj" />
+              </ItemGroup>
+              <Import Project="output.after.proj" Condition="Exists('output.after.proj')" />
+            </Project>
+            """);
+    }
+
+    [Theory]
+    [InlineData("RoslynWorkspace")]
+    [InlineData("StaticGraph")]
+    public async Task RoslynWorkspace_ImportedPropsChanged_ProjectIncluded(string engine)
+    {
+        var repo = await CreateRepositoryAsync();
+
+        // Commit 1: Create a project that imports a .props file
+        repo.CreateCommit(
+            ("global.json", """
+                {
+                  "msbuild-sdks": {
+                    "Microsoft.Build.Traversal": "4.1.82"
+                  }
+                }
+                """),
+            ("shared/Shared.props", """
+                <Project>
+                  <PropertyGroup>
+                    <SharedVersion>1.0.0</SharedVersion>
+                  </PropertyGroup>
+                </Project>
+                """),
+            ("src/App/App.csproj", """
+                <Project Sdk="Microsoft.NET.Sdk">
+                  <Import Project="../../shared/Shared.props" />
+                  <PropertyGroup>
+                    <TargetFramework>net10.0</TargetFramework>
+                    <OutputType>Exe</OutputType>
+                  </PropertyGroup>
+                </Project>
+                """),
+            ("src/App/Program.cs", """
+                Console.WriteLine("Hello");
+                """),
+            ("src/Other/Other.csproj", """
+                <Project Sdk="Microsoft.NET.Sdk">
+                  <PropertyGroup>
+                    <TargetFramework>net10.0</TargetFramework>
+                  </PropertyGroup>
+                </Project>
+                """),
+            ("src/Other/Dummy.cs", """
+                namespace Other;
+                public class Dummy { }
+                """),
+            ("dirs.proj", """
+                <Project Sdk="Microsoft.Build.Traversal">
+                  <ItemGroup>
+                    <ProjectReference Include="src/App/App.csproj" />
+                    <ProjectReference Include="src/Other/Other.csproj" />
+                  </ItemGroup>
+                </Project>
+                """)
+        );
+
+        // Commit 2: Modify the shared .props file
+        repo.CreateCommit(
+            ("shared/Shared.props", """
+                <Project>
+                  <PropertyGroup>
+                    <SharedVersion>2.0.0</SharedVersion>
+                  </PropertyGroup>
+                </Project>
+                """)
+        );
+
+        var outputPath = Path.Combine(repo.RepositoryPath, "output.proj");
+        await RunTool(
+            "generate",
+            "--input", Path.Combine(repo.RepositoryPath, "dirs.proj"),
+            "--output", outputPath,
+            "--repository", repo.RepositoryPath,
+            "--base-commit", repo.Commits[^2],
+            "--head-commit", repo.Commits[^1],
+            "--engine", engine,
+            "--full-rebuild-trigger", "**/non-existent-trigger.txt");
+
+        var content = await File.ReadAllTextAsync(outputPath, TestContext.Current.CancellationToken);
+        // Only App should be affected (it imports Shared.props), Other should NOT
+        InlineSnapshot.Validate(content.Trim(), """
+            <Project Sdk="Microsoft.Build.Traversal">
+              <Import Project="output.before.proj" Condition="Exists('output.before.proj')" />
+              <ItemGroup>
+                <ProjectReference Include="src/App/App.csproj" />
+              </ItemGroup>
+              <Import Project="output.after.proj" Condition="Exists('output.after.proj')" />
+            </Project>
+            """);
+    }
+
+    [Theory]
+    [InlineData("RoslynWorkspace")]
+    [InlineData("StaticGraph")]
+    public async Task RoslynWorkspace_MultipleProjects_OnlyChangedProjectIncluded(string engine)
+    {
+        var repo = await CreateRepositoryAsync();
+
+        // Commit 1: Create two projects
+        repo.CreateCommit(
+            ("global.json", """
+                {
+                  "msbuild-sdks": {
+                    "Microsoft.Build.Traversal": "4.1.82"
+                  }
+                }
+                """),
+            ("src/App1/App1.csproj", """
+                <Project Sdk="Microsoft.NET.Sdk">
+                  <PropertyGroup>
+                    <TargetFramework>net10.0</TargetFramework>
+                    <OutputType>Exe</OutputType>
+                  </PropertyGroup>
+                </Project>
+                """),
+            ("src/App1/Program.cs", """
+                Console.WriteLine("App1");
+                """),
+            ("src/App2/App2.csproj", """
+                <Project Sdk="Microsoft.NET.Sdk">
+                  <PropertyGroup>
+                    <TargetFramework>net10.0</TargetFramework>
+                    <OutputType>Exe</OutputType>
+                  </PropertyGroup>
+                </Project>
+                """),
+            ("src/App2/Program.cs", """
+                Console.WriteLine("App2");
+                """),
+            ("dirs.proj", """
+                <Project Sdk="Microsoft.Build.Traversal">
+                  <ItemGroup>
+                    <ProjectReference Include="src/App1/App1.csproj" />
+                    <ProjectReference Include="src/App2/App2.csproj" />
+                  </ItemGroup>
+                </Project>
+                """)
+        );
+
+        // Commit 2: Only modify App1
+        repo.CreateCommit(
+            ("src/App1/Program.cs", """
+                Console.WriteLine("App1 modified");
+                """)
+        );
+
+        var outputPath = Path.Combine(repo.RepositoryPath, "output.proj");
+        await RunTool(
+            "generate",
+            "--input", Path.Combine(repo.RepositoryPath, "dirs.proj"),
+            "--output", outputPath,
+            "--repository", repo.RepositoryPath,
+            "--base-commit", repo.Commits[^2],
+            "--head-commit", repo.Commits[^1],
+            "--engine", engine);
+
+        var content = await File.ReadAllTextAsync(outputPath, TestContext.Current.CancellationToken);
+        InlineSnapshot.Validate(content.Trim(), """
+            <Project Sdk="Microsoft.Build.Traversal">
+              <Import Project="output.before.proj" Condition="Exists('output.before.proj')" />
+              <ItemGroup>
+                <ProjectReference Include="src/App1/App1.csproj" />
+              </ItemGroup>
+              <Import Project="output.after.proj" Condition="Exists('output.after.proj')" />
+            </Project>
+            """);
+    }
+
+    [Theory]
+    [InlineData("MSBuild")]
+    [InlineData("RoslynWorkspace")]
+    [InlineData("StaticGraph")]
+    public async Task MeziantouSdk_SingleProject_FileChanged_ProjectIncluded(string engine)
+    {
+        var repo = await CreateRepositoryAsync();
+
+        // Commit 1: Create a project using Meziantou.NET.Sdk with global.json
+        repo.CreateCommit(
+            ("global.json", """
+                {
+                  "sdk": {
+                    "version": "10.0.100",
+                    "allowPrerelease": true,
+                    "rollForward": "latestMajor"
+                  },
+                  "msbuild-sdks": {
+                    "Meziantou.NET.Sdk": "1.0.73",
+                    "Microsoft.Build.Traversal": "4.1.82"
+                  }
+                }
+                """),
+            ("src/App/App.csproj", """
+                <Project Sdk="Meziantou.NET.Sdk">
+                  <PropertyGroup>
+                    <TargetFramework>net10.0</TargetFramework>
+                    <OutputType>Exe</OutputType>
+                  </PropertyGroup>
+                </Project>
+                """),
+            ("src/App/Program.cs", """
+                Console.WriteLine("Hello");
+                """),
+            ("dirs.proj", """
+                <Project Sdk="Microsoft.Build.Traversal">
+                  <ItemGroup>
+                    <ProjectReference Include="src/App/App.csproj" />
+                  </ItemGroup>
+                </Project>
+                """)
+        );
+
+        // Commit 2: Modify the source file
+        repo.CreateCommit(
+            ("src/App/Program.cs", """
+                Console.WriteLine("Hello, World!");
+                """)
+        );
+
+        var outputPath = Path.Combine(repo.RepositoryPath, "output.proj");
+        await RunTool(
+            "generate",
+            "--input", Path.Combine(repo.RepositoryPath, "dirs.proj"),
+            "--output", outputPath,
+            "--repository", repo.RepositoryPath,
+            "--base-commit", repo.Commits[^2],
+            "--head-commit", repo.Commits[^1],
+            "--engine", engine);
+
+        var content = await File.ReadAllTextAsync(outputPath, TestContext.Current.CancellationToken);
+        InlineSnapshot.Validate(content.Trim(), """
+            <Project Sdk="Microsoft.Build.Traversal">
+              <Import Project="output.before.proj" Condition="Exists('output.before.proj')" />
+              <ItemGroup>
+                <ProjectReference Include="src/App/App.csproj" />
+              </ItemGroup>
+              <Import Project="output.after.proj" Condition="Exists('output.after.proj')" />
+            </Project>
+            """);
+    }
+
+    [Theory]
+    [InlineData("MSBuild")]
+    [InlineData("RoslynWorkspace")]
+    [InlineData("StaticGraph")]
+    public async Task MeziantouSdk_MultipleProjects_OnlyChangedProjectIncluded(string engine)
+    {
+        var repo = await CreateRepositoryAsync();
+
+        // Commit 1: Create two projects using Meziantou.NET.Sdk
+        repo.CreateCommit(
+            ("global.json", """
+                {
+                  "sdk": {
+                    "version": "10.0.100",
+                    "allowPrerelease": true,
+                    "rollForward": "latestMajor"
+                  },
+                  "msbuild-sdks": {
+                    "Meziantou.NET.Sdk": "1.0.73",
+                    "Microsoft.Build.Traversal": "4.1.82"
+                  }
+                }
+                """),
+            ("src/App1/App1.csproj", """
+                <Project Sdk="Meziantou.NET.Sdk">
+                  <PropertyGroup>
+                    <TargetFramework>net10.0</TargetFramework>
+                    <OutputType>Exe</OutputType>
+                  </PropertyGroup>
+                </Project>
+                """),
+            ("src/App1/Program.cs", """
+                Console.WriteLine("App1");
+                """),
+            ("src/App2/App2.csproj", """
+                <Project Sdk="Meziantou.NET.Sdk">
+                  <PropertyGroup>
+                    <TargetFramework>net10.0</TargetFramework>
+                    <OutputType>Exe</OutputType>
+                  </PropertyGroup>
+                </Project>
+                """),
+            ("src/App2/Program.cs", """
+                Console.WriteLine("App2");
+                """),
+            ("dirs.proj", """
+                <Project Sdk="Microsoft.Build.Traversal">
+                  <ItemGroup>
+                    <ProjectReference Include="src/App1/App1.csproj" />
+                    <ProjectReference Include="src/App2/App2.csproj" />
+                  </ItemGroup>
+                </Project>
+                """)
+        );
+
+        // Commit 2: Only modify App1
+        repo.CreateCommit(
+            ("src/App1/Program.cs", """
+                Console.WriteLine("App1 modified");
+                """)
+        );
+
+        var outputPath = Path.Combine(repo.RepositoryPath, "output.proj");
+        await RunTool(
+            "generate",
+            "--input", Path.Combine(repo.RepositoryPath, "dirs.proj"),
+            "--output", outputPath,
+            "--repository", repo.RepositoryPath,
+            "--base-commit", repo.Commits[^2],
+            "--head-commit", repo.Commits[^1],
+            "--engine", engine);
+
+        var content = await File.ReadAllTextAsync(outputPath, TestContext.Current.CancellationToken);
+        InlineSnapshot.Validate(content.Trim(), """
+            <Project Sdk="Microsoft.Build.Traversal">
+              <Import Project="output.before.proj" Condition="Exists('output.before.proj')" />
+              <ItemGroup>
+                <ProjectReference Include="src/App1/App1.csproj" />
+              </ItemGroup>
+              <Import Project="output.after.proj" Condition="Exists('output.after.proj')" />
+            </Project>
+            """);
+    }
+
+    [Theory]
+    [InlineData("MSBuild")]
+    [InlineData("RoslynWorkspace")]
+    [InlineData("StaticGraph")]
+    public async Task MeziantouSdk_TransitiveDependents_AreIncluded(string engine)
+    {
+        var repo = await CreateRepositoryAsync();
+
+        // Commit 1: Create Lib -> App dependency chain using Meziantou.NET.Sdk
+        repo.CreateCommit(
+            ("global.json", """
+                {
+                  "sdk": {
+                    "version": "10.0.100",
+                    "allowPrerelease": true,
+                    "rollForward": "latestMajor"
+                  },
+                  "msbuild-sdks": {
+                    "Meziantou.NET.Sdk": "1.0.73",
+                    "Microsoft.Build.Traversal": "4.1.82"
+                  }
+                }
+                """),
+            ("src/Lib/Lib.csproj", """
+                <Project Sdk="Meziantou.NET.Sdk">
+                  <PropertyGroup>
+                    <TargetFramework>net10.0</TargetFramework>
+                  </PropertyGroup>
+                </Project>
+                """),
+            ("src/Lib/MyClass.cs", """
+                namespace Lib;
+                public class MyClass { }
+                """),
+            ("src/App/App.csproj", """
+                <Project Sdk="Meziantou.NET.Sdk">
+                  <PropertyGroup>
+                    <TargetFramework>net10.0</TargetFramework>
+                    <OutputType>Exe</OutputType>
+                  </PropertyGroup>
+                  <ItemGroup>
+                    <ProjectReference Include="../Lib/Lib.csproj" />
+                  </ItemGroup>
+                </Project>
+                """),
+            ("src/App/Program.cs", """
+                Console.WriteLine("App");
+                """),
+            ("src/Unrelated/Unrelated.csproj", """
+                <Project Sdk="Meziantou.NET.Sdk">
+                  <PropertyGroup>
+                    <TargetFramework>net10.0</TargetFramework>
+                  </PropertyGroup>
+                </Project>
+                """),
+            ("src/Unrelated/Dummy.cs", """
+                namespace Unrelated;
+                public class Dummy { }
+                """),
+            ("dirs.proj", """
+                <Project Sdk="Microsoft.Build.Traversal">
+                  <ItemGroup>
+                    <ProjectReference Include="src/App/App.csproj" />
+                    <ProjectReference Include="src/Lib/Lib.csproj" />
+                    <ProjectReference Include="src/Unrelated/Unrelated.csproj" />
+                  </ItemGroup>
+                </Project>
+                """)
+        );
+
+        // Commit 2: Modify only the Lib source file
+        repo.CreateCommit(
+            ("src/Lib/MyClass.cs", """
+                namespace Lib;
+                public class MyClass { public int Value { get; set; } }
+                """)
+        );
+
+        var outputPath = Path.Combine(repo.RepositoryPath, "output.proj");
+        await RunTool(
+            "generate",
+            "--input", Path.Combine(repo.RepositoryPath, "dirs.proj"),
+            "--output", outputPath,
+            "--repository", repo.RepositoryPath,
+            "--base-commit", repo.Commits[^2],
+            "--head-commit", repo.Commits[^1],
+            "--engine", engine);
+
+        var content = await File.ReadAllTextAsync(outputPath, TestContext.Current.CancellationToken);
+        // Both Lib and App should be affected (App depends on Lib), Unrelated should not
+        InlineSnapshot.Validate(content.Trim(), """
+            <Project Sdk="Microsoft.Build.Traversal">
+              <Import Project="output.before.proj" Condition="Exists('output.before.proj')" />
+              <ItemGroup>
+                <ProjectReference Include="src/App/App.csproj" />
+                <ProjectReference Include="src/Lib/Lib.csproj" />
+              </ItemGroup>
+              <Import Project="output.after.proj" Condition="Exists('output.after.proj')" />
+            </Project>
+            """);
+    }
+
+    [Fact]
+    public async Task HierarchicalTrigger_GlobalJsonInSubfolder_OnlyAffectsProjectsInSameHierarchy()
+    {
+        var repo = await CreateRepositoryAsync();
+
+        // Commit 1: Create projects in different top-level folders
+        repo.CreateCommit(
+            ("src/global.json", """
+                {
+                  "sdk": { "version": "10.0.100", "allowPrerelease": true, "rollForward": "latestMajor" }
+                }
+                """),
+            ("src/proj1/proj1.csproj", """
+                <Project Sdk="Microsoft.NET.Sdk">
+                  <PropertyGroup>
+                    <TargetFramework>net10.0</TargetFramework>
+                  </PropertyGroup>
+                </Project>
+                """),
+            ("src/proj1/Class1.cs", """
+                namespace Proj1;
+                public class Class1 { }
+                """),
+            ("src/proj2/proj2.csproj", """
+                <Project Sdk="Microsoft.NET.Sdk">
+                  <PropertyGroup>
+                    <TargetFramework>net10.0</TargetFramework>
+                  </PropertyGroup>
+                </Project>
+                """),
+            ("src/proj2/Class2.cs", """
+                namespace Proj2;
+                public class Class2 { }
+                """),
+            ("tests/proj1.tests/proj1.tests.csproj", """
+                <Project Sdk="Microsoft.NET.Sdk">
+                  <PropertyGroup>
+                    <TargetFramework>net10.0</TargetFramework>
+                  </PropertyGroup>
+                </Project>
+                """),
+            ("tests/proj1.tests/Tests.cs", """
+                namespace Proj1.Tests;
+                public class Tests { }
+                """),
+            ("dirs.proj", """
+                <Project Sdk="Microsoft.Build.Traversal">
+                  <ItemGroup>
+                    <ProjectReference Include="src/proj1/proj1.csproj" />
+                    <ProjectReference Include="src/proj2/proj2.csproj" />
+                    <ProjectReference Include="tests/proj1.tests/proj1.tests.csproj" />
+                  </ItemGroup>
+                </Project>
+                """)
+        );
+
+        // Commit 2: Modify global.json in src/ (should only affect src/ projects)
+        repo.CreateCommit(
+            ("src/global.json", """
+                {
+                  "sdk": { "version": "10.0.200", "allowPrerelease": true, "rollForward": "latestMajor" }
+                }
+                """)
+        );
+
+        var outputPath = Path.Combine(repo.RepositoryPath, "output.proj");
+        await RunTool(
+            "generate",
+            "--input", Path.Combine(repo.RepositoryPath, "dirs.proj"),
+            "--output", outputPath,
+            "--repository", repo.RepositoryPath,
+            "--base-commit", repo.Commits[^2],
+            "--head-commit", repo.Commits[^1]);
+
+        var content = await File.ReadAllTextAsync(outputPath, TestContext.Current.CancellationToken);
+        // Only src/ projects should be affected, NOT tests/proj1.tests
+        InlineSnapshot.Validate(content.Trim(), """
+            <Project Sdk="Microsoft.Build.Traversal">
+              <Import Project="output.before.proj" Condition="Exists('output.before.proj')" />
+              <ItemGroup>
+                <ProjectReference Include="src/proj1/proj1.csproj" />
+                <ProjectReference Include="src/proj2/proj2.csproj" />
+              </ItemGroup>
+              <Import Project="output.after.proj" Condition="Exists('output.after.proj')" />
+            </Project>
+            """);
+    }
+
+    [Fact]
+    public async Task HierarchicalTrigger_GlobalJsonAtRoot_AffectsAllProjects()
+    {
+        var repo = await CreateRepositoryAsync();
+
+        // Commit 1: Create projects in different top-level folders
+        repo.CreateCommit(
+            ("global.json", """
+                {
+                  "sdk": { "version": "10.0.100", "allowPrerelease": true, "rollForward": "latestMajor" }
+                }
+                """),
+            ("src/proj1/proj1.csproj", """
+                <Project Sdk="Microsoft.NET.Sdk">
+                  <PropertyGroup>
+                    <TargetFramework>net10.0</TargetFramework>
+                  </PropertyGroup>
+                </Project>
+                """),
+            ("src/proj1/Class1.cs", """
+                namespace Proj1;
+                public class Class1 { }
+                """),
+            ("tests/proj1.tests/proj1.tests.csproj", """
+                <Project Sdk="Microsoft.NET.Sdk">
+                  <PropertyGroup>
+                    <TargetFramework>net10.0</TargetFramework>
+                  </PropertyGroup>
+                </Project>
+                """),
+            ("tests/proj1.tests/Tests.cs", """
+                namespace Proj1.Tests;
+                public class Tests { }
+                """),
+            ("dirs.proj", """
+                <Project Sdk="Microsoft.Build.Traversal">
+                  <ItemGroup>
+                    <ProjectReference Include="src/proj1/proj1.csproj" />
+                    <ProjectReference Include="tests/proj1.tests/proj1.tests.csproj" />
+                  </ItemGroup>
+                </Project>
+                """)
+        );
+
+        // Commit 2: Modify root global.json (should affect ALL projects)
+        repo.CreateCommit(
+            ("global.json", """
+                {
+                  "sdk": { "version": "10.0.200", "allowPrerelease": true, "rollForward": "latestMajor" }
+                }
+                """)
+        );
+
+        var outputPath = Path.Combine(repo.RepositoryPath, "output.proj");
+        await RunTool(
+            "generate",
+            "--input", Path.Combine(repo.RepositoryPath, "dirs.proj"),
+            "--output", outputPath,
+            "--repository", repo.RepositoryPath,
+            "--base-commit", repo.Commits[^2],
+            "--head-commit", repo.Commits[^1]);
+
+        var content = await File.ReadAllTextAsync(outputPath, TestContext.Current.CancellationToken);
+        // All projects should be affected because root-level global.json affects everything
+        InlineSnapshot.Validate(content.Trim(), """
+            <Project Sdk="Microsoft.Build.Traversal">
+              <Import Project="output.before.proj" Condition="Exists('output.before.proj')" />
+              <ItemGroup>
+                <ProjectReference Include="src/proj1/proj1.csproj" />
+                <ProjectReference Include="tests/proj1.tests/proj1.tests.csproj" />
+              </ItemGroup>
+              <Import Project="output.after.proj" Condition="Exists('output.after.proj')" />
+            </Project>
+            """);
+    }
+
+    [Fact]
+    public async Task HierarchicalTrigger_NuGetConfigInSubfolder_OnlyAffectsProjectsInSameHierarchy()
+    {
+        var repo = await CreateRepositoryAsync();
+
+        // Commit 1: Create projects in different top-level folders
+        repo.CreateCommit(
+            ("src/proj1/proj1.csproj", """
+                <Project Sdk="Microsoft.NET.Sdk">
+                  <PropertyGroup>
+                    <TargetFramework>net10.0</TargetFramework>
+                  </PropertyGroup>
+                </Project>
+                """),
+            ("src/proj1/Class1.cs", """
+                namespace Proj1;
+                public class Class1 { }
+                """),
+            ("tests/proj1.tests/proj1.tests.csproj", """
+                <Project Sdk="Microsoft.NET.Sdk">
+                  <PropertyGroup>
+                    <TargetFramework>net10.0</TargetFramework>
+                  </PropertyGroup>
+                </Project>
+                """),
+            ("tests/proj1.tests/Tests.cs", """
+                namespace Proj1.Tests;
+                public class Tests { }
+                """),
+            ("dirs.proj", """
+                <Project Sdk="Microsoft.Build.Traversal">
+                  <ItemGroup>
+                    <ProjectReference Include="src/proj1/proj1.csproj" />
+                    <ProjectReference Include="tests/proj1.tests/proj1.tests.csproj" />
+                  </ItemGroup>
+                </Project>
+                """)
+        );
+
+        // Commit 2: Add nuget.config inside src/ (should only affect src/ projects)
+        repo.CreateCommit(
+            ("src/nuget.config", """
+                <?xml version="1.0" encoding="utf-8"?>
+                <configuration>
+                  <packageSources>
+                    <add key="nuget.org" value="https://api.nuget.org/v3/index.json" />
+                  </packageSources>
+                </configuration>
+                """)
+        );
+
+        var outputPath = Path.Combine(repo.RepositoryPath, "output.proj");
+        await RunTool(
+            "generate",
+            "--input", Path.Combine(repo.RepositoryPath, "dirs.proj"),
+            "--output", outputPath,
+            "--repository", repo.RepositoryPath,
+            "--base-commit", repo.Commits[^2],
+            "--head-commit", repo.Commits[^1]);
+
+        var content = await File.ReadAllTextAsync(outputPath, TestContext.Current.CancellationToken);
+        // Only src/proj1 should be affected, NOT tests/proj1.tests
+        InlineSnapshot.Validate(content.Trim(), """
+            <Project Sdk="Microsoft.Build.Traversal">
+              <Import Project="output.before.proj" Condition="Exists('output.before.proj')" />
+              <ItemGroup>
+                <ProjectReference Include="src/proj1/proj1.csproj" />
+              </ItemGroup>
+              <Import Project="output.after.proj" Condition="Exists('output.after.proj')" />
+            </Project>
+            """);
+    }
+
+    [Fact]
+    public async Task CustomHierarchicalTrigger_ReplacesDefaults()
+    {
+        var repo = await CreateRepositoryAsync();
+
+        // Commit 1: Create projects in different top-level folders
+        repo.CreateCommit(
+            ("src/proj1/proj1.csproj", """
+                <Project Sdk="Microsoft.NET.Sdk">
+                  <PropertyGroup>
+                    <TargetFramework>net10.0</TargetFramework>
+                  </PropertyGroup>
+                </Project>
+                """),
+            ("src/proj1/Class1.cs", """
+                namespace Proj1;
+                public class Class1 { }
+                """),
+            ("tests/proj1.tests/proj1.tests.csproj", """
+                <Project Sdk="Microsoft.NET.Sdk">
+                  <PropertyGroup>
+                    <TargetFramework>net10.0</TargetFramework>
+                  </PropertyGroup>
+                </Project>
+                """),
+            ("tests/proj1.tests/Tests.cs", """
+                namespace Proj1.Tests;
+                public class Tests { }
+                """),
+            ("dirs.proj", """
+                <Project Sdk="Microsoft.Build.Traversal">
+                  <ItemGroup>
+                    <ProjectReference Include="src/proj1/proj1.csproj" />
+                    <ProjectReference Include="tests/proj1.tests/proj1.tests.csproj" />
+                  </ItemGroup>
+                </Project>
+                """)
+        );
+
+        // Commit 2: Add a custom trigger file in src/
+        repo.CreateCommit(
+            ("src/build.lock", "locked")
+        );
+
+        var outputPath = Path.Combine(repo.RepositoryPath, "output.proj");
+        // Use custom hierarchical trigger that matches build.lock
+        await RunTool(
+            "generate",
+            "--input", Path.Combine(repo.RepositoryPath, "dirs.proj"),
+            "--output", outputPath,
+            "--repository", repo.RepositoryPath,
+            "--base-commit", repo.Commits[^2],
+            "--head-commit", repo.Commits[^1],
+            "--hierarchical-rebuild-trigger", "**/build.lock");
+
+        var content = await File.ReadAllTextAsync(outputPath, TestContext.Current.CancellationToken);
+        // Only src/proj1 should be affected (build.lock is in src/)
+        InlineSnapshot.Validate(content.Trim(), """
+            <Project Sdk="Microsoft.Build.Traversal">
+              <Import Project="output.before.proj" Condition="Exists('output.before.proj')" />
+              <ItemGroup>
+                <ProjectReference Include="src/proj1/proj1.csproj" />
+              </ItemGroup>
+              <Import Project="output.after.proj" Condition="Exists('output.after.proj')" />
+            </Project>
+            """);
+    }
+
+    [Fact]
+    public async Task HierarchicalTrigger_EditorConfigInSubfolder_OnlyAffectsProjectsInSameHierarchy()
+    {
+        var repo = await CreateRepositoryAsync();
+
+        // Commit 1: Create projects in different top-level folders
+        repo.CreateCommit(
+            ("src/proj1/proj1.csproj", """
+                <Project Sdk="Microsoft.NET.Sdk">
+                  <PropertyGroup>
+                    <TargetFramework>net10.0</TargetFramework>
+                  </PropertyGroup>
+                </Project>
+                """),
+            ("src/proj1/Class1.cs", """
+                namespace Proj1;
+                public class Class1 { }
+                """),
+            ("tests/proj1.tests/proj1.tests.csproj", """
+                <Project Sdk="Microsoft.NET.Sdk">
+                  <PropertyGroup>
+                    <TargetFramework>net10.0</TargetFramework>
+                  </PropertyGroup>
+                </Project>
+                """),
+            ("tests/proj1.tests/Tests.cs", """
+                namespace Proj1.Tests;
+                public class Tests { }
+                """),
+            ("dirs.proj", """
+                <Project Sdk="Microsoft.Build.Traversal">
+                  <ItemGroup>
+                    <ProjectReference Include="src/proj1/proj1.csproj" />
+                    <ProjectReference Include="tests/proj1.tests/proj1.tests.csproj" />
+                  </ItemGroup>
+                </Project>
+                """)
+        );
+
+        // Commit 2: Add .editorconfig inside src/ (should only affect src/ projects)
+        repo.CreateCommit(
+            ("src/.editorconfig", """
+                root = true
+                [*.cs]
+                indent_size = 4
+                """)
+        );
+
+        var outputPath = Path.Combine(repo.RepositoryPath, "output.proj");
+        await RunTool(
+            "generate",
+            "--input", Path.Combine(repo.RepositoryPath, "dirs.proj"),
+            "--output", outputPath,
+            "--repository", repo.RepositoryPath,
+            "--base-commit", repo.Commits[^2],
+            "--head-commit", repo.Commits[^1]);
+
+        var content = await File.ReadAllTextAsync(outputPath, TestContext.Current.CancellationToken);
+        // Only src/proj1 should be affected, NOT tests/proj1.tests
+        InlineSnapshot.Validate(content.Trim(), """
+            <Project Sdk="Microsoft.Build.Traversal">
+              <Import Project="output.before.proj" Condition="Exists('output.before.proj')" />
+              <ItemGroup>
+                <ProjectReference Include="src/proj1/proj1.csproj" />
+              </ItemGroup>
+              <Import Project="output.after.proj" Condition="Exists('output.after.proj')" />
+            </Project>
+            """);
+    }
+
+    [Fact]
+    public async Task EditorConfigItem_TrackedAsOwnedFile()
+    {
+        var repo = await CreateRepositoryAsync();
+
+        // Commit 1: Create two projects, one with an .editorconfig next to it
+        repo.CreateCommit(
+            ("src/proj1/proj1.csproj", """
+                <Project Sdk="Microsoft.NET.Sdk">
+                  <PropertyGroup>
+                    <TargetFramework>net10.0</TargetFramework>
+                  </PropertyGroup>
+                </Project>
+                """),
+            ("src/proj1/.editorconfig", """
+                root = true
+                [*.cs]
+                indent_size = 4
+                """),
+            ("src/proj1/Class1.cs", """
+                namespace Proj1;
+                public class Class1 { }
+                """),
+            ("src/proj2/proj2.csproj", """
+                <Project Sdk="Microsoft.NET.Sdk">
+                  <PropertyGroup>
+                    <TargetFramework>net10.0</TargetFramework>
+                  </PropertyGroup>
+                </Project>
+                """),
+            ("src/proj2/Class2.cs", """
+                namespace Proj2;
+                public class Class2 { }
+                """),
+            ("dirs.proj", """
+                <Project Sdk="Microsoft.Build.Traversal">
+                  <ItemGroup>
+                    <ProjectReference Include="src/proj1/proj1.csproj" />
+                    <ProjectReference Include="src/proj2/proj2.csproj" />
+                  </ItemGroup>
+                </Project>
+                """)
+        );
+
+        // Commit 2: Change the .editorconfig next to proj1
+        // MSBuild discovers this via EditorConfigFiles item → should be tracked as an owned file of proj1
+        // We disable hierarchical triggers so only direct file ownership detection is tested
+        repo.CreateCommit(
+            ("src/proj1/.editorconfig", """
+                root = true
+                [*.cs]
+                indent_size = 2
+                """)
+        );
+
+        var outputPath = Path.Combine(repo.RepositoryPath, "output.proj");
+        await RunTool(
+            "generate",
+            "--input", Path.Combine(repo.RepositoryPath, "dirs.proj"),
+            "--output", outputPath,
+            "--repository", repo.RepositoryPath,
+            "--base-commit", repo.Commits[^2],
+            "--head-commit", repo.Commits[^1],
+            "--hierarchical-rebuild-trigger", "nonexistent-pattern-to-disable-defaults");
+
+        var content = await File.ReadAllTextAsync(outputPath, TestContext.Current.CancellationToken);
+        // Only proj1 should be affected because its .editorconfig is tracked as an EditorConfigFiles item
+        InlineSnapshot.Validate(content.Trim(), """
+            <Project Sdk="Microsoft.Build.Traversal">
+              <Import Project="output.before.proj" Condition="Exists('output.before.proj')" />
+              <ItemGroup>
+                <ProjectReference Include="src/proj1/proj1.csproj" />
+              </ItemGroup>
+              <Import Project="output.after.proj" Condition="Exists('output.after.proj')" />
+            </Project>
+            """);
+    }
+
+    [Fact]
+    public async Task GlobalEditorConfigItem_TrackedAsOwnedFile()
+    {
+        var repo = await CreateRepositoryAsync();
+
+        // Commit 1: Create a project with a .globalconfig
+        repo.CreateCommit(
+            ("src/proj1/proj1.csproj", """
+                <Project Sdk="Microsoft.NET.Sdk">
+                  <PropertyGroup>
+                    <TargetFramework>net10.0</TargetFramework>
+                  </PropertyGroup>
+                  <ItemGroup>
+                    <GlobalAnalyzerConfigFiles Include="custom.globalconfig" />
+                  </ItemGroup>
+                </Project>
+                """),
+            ("src/proj1/custom.globalconfig", """
+                is_global = true
+                dotnet_diagnostic.CA1000.severity = warning
+                """),
+            ("src/proj1/Class1.cs", """
+                namespace Proj1;
+                public class Class1 { }
+                """),
+            ("src/proj2/proj2.csproj", """
+                <Project Sdk="Microsoft.NET.Sdk">
+                  <PropertyGroup>
+                    <TargetFramework>net10.0</TargetFramework>
+                  </PropertyGroup>
+                </Project>
+                """),
+            ("src/proj2/Class2.cs", """
+                namespace Proj2;
+                public class Class2 { }
+                """),
+            ("dirs.proj", """
+                <Project Sdk="Microsoft.Build.Traversal">
+                  <ItemGroup>
+                    <ProjectReference Include="src/proj1/proj1.csproj" />
+                    <ProjectReference Include="src/proj2/proj2.csproj" />
+                  </ItemGroup>
+                </Project>
+                """)
+        );
+
+        // Commit 2: Change the .globalconfig
+        repo.CreateCommit(
+            ("src/proj1/custom.globalconfig", """
+                is_global = true
+                dotnet_diagnostic.CA1000.severity = error
+                """)
+        );
+
+        var outputPath = Path.Combine(repo.RepositoryPath, "output.proj");
+        await RunTool(
+            "generate",
+            "--input", Path.Combine(repo.RepositoryPath, "dirs.proj"),
+            "--output", outputPath,
+            "--repository", repo.RepositoryPath,
+            "--base-commit", repo.Commits[^2],
+            "--head-commit", repo.Commits[^1],
+            "--hierarchical-rebuild-trigger", "nonexistent-pattern-to-disable-defaults");
+
+        var content = await File.ReadAllTextAsync(outputPath, TestContext.Current.CancellationToken);
+        // Only proj1 should be affected because its .globalconfig is tracked as a GlobalAnalyzerConfigFiles item
+        InlineSnapshot.Validate(content.Trim(), """
+            <Project Sdk="Microsoft.Build.Traversal">
+              <Import Project="output.before.proj" Condition="Exists('output.before.proj')" />
+              <ItemGroup>
+                <ProjectReference Include="src/proj1/proj1.csproj" />
+              </ItemGroup>
+              <Import Project="output.after.proj" Condition="Exists('output.after.proj')" />
+            </Project>
+            """);
+    }
+
+    [Fact]
+    public async Task WorkingTree_ModifiedFile_DetectsAffectedProject()
+    {
+        var repo = await CreateRepositoryAsync();
+
+        // Commit 1: Create two projects
+        repo.CreateCommit(
+            ("src/proj1/proj1.csproj", """
+                <Project Sdk="Microsoft.NET.Sdk">
+                  <PropertyGroup>
+                    <TargetFramework>net10.0</TargetFramework>
+                  </PropertyGroup>
+                </Project>
+                """),
+            ("src/proj1/Class1.cs", """
+                namespace Proj1;
+                public class Class1 { }
+                """),
+            ("src/proj2/proj2.csproj", """
+                <Project Sdk="Microsoft.NET.Sdk">
+                  <PropertyGroup>
+                    <TargetFramework>net10.0</TargetFramework>
+                  </PropertyGroup>
+                </Project>
+                """),
+            ("src/proj2/Class2.cs", """
+                namespace Proj2;
+                public class Class2 { }
+                """),
+            ("dirs.proj", """
+                <Project Sdk="Microsoft.Build.Traversal">
+                  <ItemGroup>
+                    <ProjectReference Include="src/proj1/proj1.csproj" />
+                    <ProjectReference Include="src/proj2/proj2.csproj" />
+                  </ItemGroup>
+                </Project>
+                """)
+        );
+
+        // Modify a file without committing (working tree change)
+        repo.WriteFiles(
+            ("src/proj1/Class1.cs", """
+                namespace Proj1;
+                public class Class1 { public void NewMethod() { } }
+                """)
+        );
+
+        var outputPath = Path.Combine(repo.RepositoryPath, "output.proj");
+        await RunTool(
+            "generate",
+            "--input", Path.Combine(repo.RepositoryPath, "dirs.proj"),
+            "--output", outputPath,
+            "--repository", repo.RepositoryPath,
+            "--base-commit", repo.Commits[^1],
+            "--working-tree");
+
+        var content = await File.ReadAllTextAsync(outputPath, TestContext.Current.CancellationToken);
+        // Only proj1 should be affected because only its source file was modified
+        InlineSnapshot.Validate(content.Trim(), """
+            <Project Sdk="Microsoft.Build.Traversal">
+              <Import Project="output.before.proj" Condition="Exists('output.before.proj')" />
+              <ItemGroup>
+                <ProjectReference Include="src/proj1/proj1.csproj" />
+              </ItemGroup>
+              <Import Project="output.after.proj" Condition="Exists('output.after.proj')" />
+            </Project>
+            """);
+    }
+
+    [Fact]
+    public async Task WorkingTree_UntrackedFile_DetectsAffectedProject()
+    {
+        var repo = await CreateRepositoryAsync();
+
+        // Commit 1: Create two projects
+        repo.CreateCommit(
+            ("src/proj1/proj1.csproj", """
+                <Project Sdk="Microsoft.NET.Sdk">
+                  <PropertyGroup>
+                    <TargetFramework>net10.0</TargetFramework>
+                  </PropertyGroup>
+                </Project>
+                """),
+            ("src/proj1/Class1.cs", """
+                namespace Proj1;
+                public class Class1 { }
+                """),
+            ("src/proj2/proj2.csproj", """
+                <Project Sdk="Microsoft.NET.Sdk">
+                  <PropertyGroup>
+                    <TargetFramework>net10.0</TargetFramework>
+                  </PropertyGroup>
+                </Project>
+                """),
+            ("src/proj2/Class2.cs", """
+                namespace Proj2;
+                public class Class2 { }
+                """),
+            ("dirs.proj", """
+                <Project Sdk="Microsoft.Build.Traversal">
+                  <ItemGroup>
+                    <ProjectReference Include="src/proj1/proj1.csproj" />
+                    <ProjectReference Include="src/proj2/proj2.csproj" />
+                  </ItemGroup>
+                </Project>
+                """)
+        );
+
+        // Add a new untracked file to proj2 (not staged, not committed)
+        repo.WriteFiles(
+            ("src/proj2/NewClass.cs", """
+                namespace Proj2;
+                public class NewClass { }
+                """)
+        );
+
+        var outputPath = Path.Combine(repo.RepositoryPath, "output.proj");
+        await RunTool(
+            "generate",
+            "--input", Path.Combine(repo.RepositoryPath, "dirs.proj"),
+            "--output", outputPath,
+            "--repository", repo.RepositoryPath,
+            "--base-commit", repo.Commits[^1],
+            "--working-tree");
+
+        var content = await File.ReadAllTextAsync(outputPath, TestContext.Current.CancellationToken);
+        // Only proj2 should be affected because the new untracked file is in its directory
+        InlineSnapshot.Validate(content.Trim(), """
+            <Project Sdk="Microsoft.Build.Traversal">
+              <Import Project="output.before.proj" Condition="Exists('output.before.proj')" />
+              <ItemGroup>
+                <ProjectReference Include="src/proj2/proj2.csproj" />
+              </ItemGroup>
+              <Import Project="output.after.proj" Condition="Exists('output.after.proj')" />
+            </Project>
+            """);
+    }
+
+    [Fact]
+    public async Task WorkingTree_NoChanges_ProducesEmptyOutput()
+    {
+        var repo = await CreateRepositoryAsync();
+
+        // Commit 1: Create a project
+        repo.CreateCommit(
+            ("src/proj1/proj1.csproj", """
+                <Project Sdk="Microsoft.NET.Sdk">
+                  <PropertyGroup>
+                    <TargetFramework>net10.0</TargetFramework>
+                  </PropertyGroup>
+                </Project>
+                """),
+            ("src/proj1/Class1.cs", """
+                namespace Proj1;
+                public class Class1 { }
+                """),
+            ("dirs.proj", """
+                <Project Sdk="Microsoft.Build.Traversal">
+                  <ItemGroup>
+                    <ProjectReference Include="src/proj1/proj1.csproj" />
+                  </ItemGroup>
+                </Project>
+                """)
+        );
+
+        // No working tree modifications — compare HEAD against working tree
+        var outputPath = Path.Combine(repo.RepositoryPath, "output.proj");
+        await RunTool(
+            "generate",
+            "--input", Path.Combine(repo.RepositoryPath, "dirs.proj"),
+            "--output", outputPath,
+            "--repository", repo.RepositoryPath,
+            "--base-commit", repo.Commits[^1],
+            "--working-tree");
+
+        var content = await File.ReadAllTextAsync(outputPath, TestContext.Current.CancellationToken);
+        // No projects should be affected
+        InlineSnapshot.Validate(content.Trim(), """
+            <Project Sdk="Microsoft.Build.Traversal">
+              <Import Project="output.before.proj" Condition="Exists('output.before.proj')" />
+              <ItemGroup />
+              <Import Project="output.after.proj" Condition="Exists('output.after.proj')" />
+            </Project>
+            """);
+    }
 }

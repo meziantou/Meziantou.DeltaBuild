@@ -48,6 +48,11 @@ internal static class Program
             Description = "The base branch for merge-base detection (default: auto-detected from remote)",
         };
 
+        var workingTreeOption = new Option<bool>("--working-tree")
+        {
+            Description = "Compare the base commit against the current working directory instead of a commit. Includes staged, unstaged, and untracked files. When set, --head-commit is ignored.",
+        };
+
         var includeOption = new Option<string[]>("--include")
         {
             Description = "Glob patterns to filter which projects to consider (repeatable)",
@@ -56,8 +61,20 @@ internal static class Program
 
         var fullRebuildTriggerOption = new Option<string[]>("--full-rebuild-trigger")
         {
-            Description = "Glob patterns for files that trigger a full rebuild (replaces defaults when provided, repeatable)",
+            Description = "Glob patterns for files that trigger a full rebuild of ALL projects (replaces defaults when provided, repeatable)",
             AllowMultipleArgumentsPerToken = true,
+        };
+
+        var hierarchicalRebuildTriggerOption = new Option<string[]>("--hierarchical-rebuild-trigger")
+        {
+            Description = "Glob patterns for files that trigger a rebuild of projects in the same folder hierarchy (replaces defaults when provided, repeatable). Default: **/global.json, **/nuget.config, **/.editorconfig",
+            AllowMultipleArgumentsPerToken = true,
+        };
+
+        var engineOption = new Option<AnalysisEngine>("--engine")
+        {
+            Description = "The analysis engine to use: MSBuild (default), RoslynWorkspace (uses Roslyn, more compatible), or StaticGraph (passes input file directly to MSBuild Static Graph API)",
+            DefaultValueFactory = _ => AnalysisEngine.MSBuild,
         };
 
         var generateCommand = new Command("generate", "Generate a subset solution/build file for incremental CI builds")
@@ -68,8 +85,11 @@ internal static class Program
             headCommitOption,
             baseCommitOption,
             baseBranchOption,
+            workingTreeOption,
             includeOption,
             fullRebuildTriggerOption,
+            hierarchicalRebuildTriggerOption,
+            engineOption,
         };
 
         generateCommand.SetAction(async (parseResult, cancellationToken) =>
@@ -82,8 +102,11 @@ internal static class Program
                 HeadCommit = parseResult.GetValue(headCommitOption),
                 BaseCommit = parseResult.GetValue(baseCommitOption),
                 BaseBranch = parseResult.GetValue(baseBranchOption),
+                CompareWorkingTree = parseResult.GetValue(workingTreeOption),
                 IncludePatterns = parseResult.GetValue(includeOption) ?? [],
                 FullRebuildTriggerPatterns = parseResult.GetValue(fullRebuildTriggerOption) ?? [],
+                HierarchicalRebuildTriggerPatterns = parseResult.GetValue(hierarchicalRebuildTriggerOption) ?? [],
+                Engine = parseResult.GetValue(engineOption),
             };
 
             return await DeltaBuildEngine.RunAsync(options, Console.Out, cancellationToken);

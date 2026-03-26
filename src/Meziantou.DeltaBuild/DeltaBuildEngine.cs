@@ -5,7 +5,9 @@ namespace Meziantou.DeltaBuild;
 
 internal static class DeltaBuildEngine
 {
-    private static readonly string[] DefaultFullRebuildTriggerPatterns =
+    private static readonly string[] DefaultFullRebuildTriggerPatterns = [];
+
+    private static readonly string[] DefaultHierarchicalRebuildTriggerPatterns =
     [
         "**/global.json",
         "**/nuget.config",
@@ -18,12 +20,23 @@ internal static class DeltaBuildEngine
     {
         var repositoryPath = FullPath.FromPath(options.RepositoryPath);
 
+        var isWorkingTree = options.CompareWorkingTree;
+
         // Step 1: Resolve commits
-        var headCommit = options.HeadCommit;
-        if (string.IsNullOrEmpty(headCommit))
+        string? headCommit;
+        if (isWorkingTree)
         {
-            log.WriteLine("No --head-commit provided, using HEAD");
-            headCommit = await GitHelper.GetHeadCommitAsync(repositoryPath, cancellationToken);
+            log.WriteLine("Using working tree as head (staged + unstaged + untracked files)");
+            headCommit = null;
+        }
+        else
+        {
+            headCommit = options.HeadCommit;
+            if (string.IsNullOrEmpty(headCommit))
+            {
+                log.WriteLine("No --head-commit provided, using HEAD");
+                headCommit = await GitHelper.GetHeadCommitAsync(repositoryPath, cancellationToken);
+            }
         }
 
         var baseCommit = options.BaseCommit;
@@ -36,14 +49,24 @@ internal static class DeltaBuildEngine
                 log.WriteLine($"Auto-detected base branch: {baseBranch}");
             }
 
+            var mergeBaseRef = headCommit ?? "HEAD";
             log.WriteLine($"No --base-commit provided, computing merge-base with {baseBranch}");
-            baseCommit = await GitHelper.GetMergeBaseAsync(repositoryPath, headCommit, baseBranch, cancellationToken);
+            baseCommit = await GitHelper.GetMergeBaseAsync(repositoryPath, mergeBaseRef, baseBranch, cancellationToken);
         }
 
-        log.WriteLine($"Comparing {baseCommit} -> {headCommit}");
+        log.WriteLine($"Comparing {baseCommit} -> {(isWorkingTree ? "working-tree" : headCommit)}");
 
         // Step 2: Get changed files
-        var changedFiles = await GitHelper.GetChangedFilesAsync(repositoryPath, baseCommit, headCommit, cancellationToken);
+        IReadOnlyList<string> changedFiles;
+        if (isWorkingTree)
+        {
+            changedFiles = await GitHelper.GetWorkingTreeChangedFilesAsync(repositoryPath, baseCommit, cancellationToken);
+        }
+        else
+        {
+            changedFiles = await GitHelper.GetChangedFilesAsync(repositoryPath, baseCommit, headCommit!, cancellationToken);
+        }
+
         log.WriteLine($"Found {changedFiles.Count} changed file(s)");
 
         foreach (var file in changedFiles)
@@ -90,20 +113,34 @@ internal static class DeltaBuildEngine
             }
         }
 
-        // Step 6: Check full-rebuild triggers
-        var triggerPatterns = options.FullRebuildTriggerPatterns.Length > 0
+        // Step 6: Check full-rebuild triggers (affects ALL projects)
+        var fullTriggerPatterns = options.FullRebuildTriggerPatterns.Length > 0
             ? options.FullRebuildTriggerPatterns
             : DefaultFullRebuildTriggerPatterns;
 
-        if (IsFullRebuildTriggered(changedFiles, triggerPatterns))
+        if (IsFullRebuildTriggered(changedFiles, fullTriggerPatterns))
         {
             log.WriteLine("Full rebuild triggered: a changed file matches a full-rebuild-trigger pattern.");
             await OutputWriter.WriteAsync(options, input, projectPaths, log, cancellationToken);
             return 0;
         }
 
+        // Step 6b: Check hierarchical-rebuild triggers (affects only projects in the same folder hierarchy)
+        var hierarchicalTriggerPatterns = options.HierarchicalRebuildTriggerPatterns.Length > 0
+            ? options.HierarchicalRebuildTriggerPatterns
+            : DefaultHierarchicalRebuildTriggerPatterns;
+
+        var hierarchicallyAffectedProjects = GetHierarchicallyAffectedProjects(
+            changedFiles, hierarchicalTriggerPatterns, projectPaths, repositoryPath, log);
+
         // Step 7: Build project graph and analyze
-        var projectInfos = ProjectGraphAnalyzer.Analyze(projectPaths, log);
+        log.WriteLine($"Analyzing projects using engine: {options.Engine}");
+        var projectInfos = options.Engine switch
+        {
+            AnalysisEngine.StaticGraph => StaticGraphProjectAnalyzer.Analyze(input.InputFilePath, log),
+            AnalysisEngine.RoslynWorkspace => await WorkspaceProjectAnalyzer.AnalyzeAsync(projectPaths, log, cancellationToken),
+            _ => ProjectGraphAnalyzer.Analyze(projectPaths, log),
+        };
 
         // Step 8: Determine directly affected projects
         var normalizedChangedFiles = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
@@ -114,6 +151,12 @@ internal static class DeltaBuildEngine
         }
 
         var directlyAffected = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        // Include projects affected by hierarchical triggers
+        foreach (var project in hierarchicallyAffectedProjects)
+        {
+            directlyAffected.Add(ProjectGraphAnalyzer.NormalizePath(project));
+        }
 
         foreach (var (projectPath, info) in projectInfos)
         {
@@ -217,5 +260,73 @@ internal static class DeltaBuildEngine
         }
 
         return false;
+    }
+
+    /// <summary>
+    /// For each changed file matching a hierarchical trigger pattern, find projects whose directory
+    /// is the same as or below the changed file's directory. For example, if "src/global.json" changes,
+    /// projects under "src/" are affected but projects under "tests/" are not.
+    /// </summary>
+    private static HashSet<FullPath> GetHierarchicallyAffectedProjects(
+        IReadOnlyList<string> changedFiles,
+        string[] triggerPatterns,
+        IReadOnlyList<FullPath> projectPaths,
+        FullPath repositoryPath,
+        TextWriter log)
+    {
+        var affected = new HashSet<FullPath>();
+
+        if (triggerPatterns.Length == 0)
+            return affected;
+
+        var globs = triggerPatterns
+            .Select(p => Glob.Parse(p, GlobOptions.None))
+            .ToArray();
+
+        // Find changed files that match hierarchical trigger patterns
+        var triggerFiles = new List<string>();
+        foreach (var file in changedFiles)
+        {
+            var normalizedFile = file.Replace('\\', '/');
+            foreach (var glob in globs)
+            {
+                if (glob.IsMatch(normalizedFile))
+                {
+                    triggerFiles.Add(normalizedFile);
+                    break;
+                }
+            }
+        }
+
+        if (triggerFiles.Count == 0)
+            return affected;
+
+        // For each trigger file, compute its directory (relative to repo root) and find projects under it
+        foreach (var triggerFile in triggerFiles)
+        {
+            // Get directory of the trigger file relative to the repo root
+            // e.g., "src/global.json" -> "src/", "global.json" -> ""
+            var lastSlash = triggerFile.LastIndexOf('/');
+            var triggerDir = lastSlash >= 0 ? triggerFile[..(lastSlash + 1)] : "";
+
+            foreach (var projectPath in projectPaths)
+            {
+                if (affected.Contains(projectPath))
+                    continue;
+
+                var projectRelative = projectPath.MakePathRelativeTo(repositoryPath).Replace('\\', '/');
+
+                // A project is affected if it is at or below the trigger file's directory
+                // e.g., trigger dir "src/" affects "src/proj1/proj1.csproj" but not "tests/proj1.tests/proj1.tests.csproj"
+                // An empty trigger dir (root-level file) affects all projects
+                if (triggerDir.Length == 0 || projectRelative.StartsWith(triggerDir, StringComparison.OrdinalIgnoreCase))
+                {
+                    affected.Add(projectPath);
+                    log.WriteLine($"  Hierarchical trigger: {projectPath} (due to {triggerFile})");
+                }
+            }
+        }
+
+        return affected;
     }
 }

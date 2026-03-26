@@ -46,6 +46,37 @@ internal static class GitHelper
         return result.Split('\0', StringSplitOptions.RemoveEmptyEntries);
     }
 
+    /// <summary>
+    /// Gets all files that differ between the given base commit and the current working tree,
+    /// including staged changes, unstaged modifications, and untracked files.
+    /// </summary>
+    public static async Task<IReadOnlyList<string>> GetWorkingTreeChangedFilesAsync(string repositoryPath, string baseCommit, CancellationToken cancellationToken = default)
+    {
+        var files = new HashSet<string>(StringComparer.Ordinal);
+
+        // 1. Tracked files changed between the base commit and the working tree (staged + unstaged)
+        var diffResult = await RunGitAsync(repositoryPath, ["diff", "--name-only", "-z", baseCommit], cancellationToken);
+        if (!string.IsNullOrEmpty(diffResult))
+        {
+            foreach (var file in diffResult.Split('\0', StringSplitOptions.RemoveEmptyEntries))
+            {
+                files.Add(file);
+            }
+        }
+
+        // 2. Untracked files (new files not yet staged)
+        var untrackedResult = await RunGitAsync(repositoryPath, ["ls-files", "--others", "--exclude-standard", "-z"], cancellationToken);
+        if (!string.IsNullOrEmpty(untrackedResult))
+        {
+            foreach (var file in untrackedResult.Split('\0', StringSplitOptions.RemoveEmptyEntries))
+            {
+                files.Add(file);
+            }
+        }
+
+        return [.. files];
+    }
+
     public static async Task<string> RunGitAsync(string workingDirectory, string[] arguments, CancellationToken cancellationToken = default)
     {
         var psi = new ProcessStartInfo

@@ -8,6 +8,9 @@ internal sealed class DeltaBuildOptions
     public string? HeadCommit { get; init; }
     public string? BaseCommit { get; init; }
     public string? BaseBranch { get; init; }
+    public bool CompareWorkingTree { get; init; }
     public string[] IncludePatterns { get; init; } = [];
     public string[] FullRebuildTriggerPatterns { get; init; } = [];
+    public string[] HierarchicalRebuildTriggerPatterns { get; init; } = [];
+    public AnalysisEngine Engine { get; init; } = AnalysisEngine.MSBuild;
 }
