@@ -37,12 +37,12 @@ internal static class InputReader
 
         // .proj files could be Traversal or single projects; check content first
         if (string.Equals(extension, ".proj", StringComparison.OrdinalIgnoreCase))
-            return await ReadTraversalAsync(fullPath, cancellationToken);
+            return ReadTraversalAsync(fullPath);
 
         if (IsSingleProjectExtension(extension))
             return ReadSingleProject(fullPath);
 
-        return await ReadTraversalAsync(fullPath, cancellationToken);
+        return ReadTraversalAsync(fullPath);
     }
 
     private static bool IsSingleProjectExtension(string extension)
@@ -104,7 +104,7 @@ internal static class InputReader
         return paths;
     }
 
-    private static async Task<InputModel> ReadTraversalAsync(FullPath fullPath, CancellationToken cancellationToken)
+    private static InputModel ReadTraversalAsync(FullPath fullPath)
     {
         // Use MSBuild evaluation to properly handle globbing and Include/Remove semantics
         var paths = MsBuildTraversalReader.GetProjectReferences(fullPath);
