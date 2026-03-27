@@ -82,6 +82,11 @@ internal static class Program
             Description = "Path of the import added before the ProjectReference items in the generated Traversal SDK file (default: <output-name>.before.proj)",
         };
 
+        var traversalSdkVersionOption = new Option<string?>("--traversal-sdk-version")
+        {
+            Description = "Optional version appended to the Traversal SDK in generated Traversal files (for example: Microsoft.Build.Traversal/4.1.82). When omitted, no version suffix is added.",
+        };
+
         var traversalAfterImportOption = new Option<string?>("--traversal-after-import")
         {
             Description = "Path of the import added after the ProjectReference items in the generated Traversal SDK file (default: <output-name>.after.proj)",
@@ -101,6 +106,7 @@ internal static class Program
             hierarchicalRebuildTriggerOption,
             engineOption,
             traversalBeforeImportOption,
+            traversalSdkVersionOption,
             traversalAfterImportOption,
         };
 
@@ -120,6 +126,7 @@ internal static class Program
                 HierarchicalRebuildTriggerPatterns = parseResult.GetValue(hierarchicalRebuildTriggerOption) ?? [],
                 Engine = parseResult.GetValue(engineOption),
                 TraversalBeforeImport = parseResult.GetValue(traversalBeforeImportOption),
+                TraversalSdkVersion = parseResult.GetValue(traversalSdkVersionOption),
                 TraversalAfterImport = parseResult.GetValue(traversalAfterImportOption),
             };
 

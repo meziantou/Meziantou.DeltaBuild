@@ -177,6 +177,29 @@ internal static class OutputWriter
         return path.MakePathRelativeTo(basePath).Replace('\\', '/');
     }
 
+    private static string ToTraversalPath(FullPath path, FullPath basePath)
+    {
+        return ToTraversalPath(ToRelativePath(path, basePath));
+    }
+
+    private static string ToTraversalPath(string path)
+    {
+        var normalizedPath = path.Replace('\\', '/');
+
+        if (Path.IsPathRooted(normalizedPath) ||
+            normalizedPath.StartsWith("$(", StringComparison.Ordinal))
+        {
+            return normalizedPath;
+        }
+
+        if (normalizedPath.StartsWith("./", StringComparison.Ordinal))
+        {
+            normalizedPath = normalizedPath[2..];
+        }
+
+        return "$(MSBuildThisFileDirectory)" + normalizedPath;
+    }
+
     private static async Task WriteJsonAsync(
         IReadOnlyList<FullPath> affectedProjectPaths,
         FullPath outputPath,
@@ -228,33 +251,41 @@ internal static class OutputWriter
         var outputFileName = Path.GetFileName(outputPath.Value);
         var beforeImportPath = options.TraversalBeforeImport ?? (Path.GetFileNameWithoutExtension(outputFileName) + ".before.proj");
         var afterImportPath = options.TraversalAfterImport ?? (Path.GetFileNameWithoutExtension(outputFileName) + ".after.proj");
+        var traversalBeforeImportPath = ToTraversalPath(beforeImportPath);
+        var traversalAfterImportPath = ToTraversalPath(afterImportPath);
+        var traversalSdk = "Microsoft.Build.Traversal";
+        if (!string.IsNullOrWhiteSpace(options.TraversalSdkVersion))
+        {
+            var version = options.TraversalSdkVersion.Trim().TrimStart('/');
+            traversalSdk += "/" + version;
+        }
 
         var doc = new XDocument(
             new XElement("Project",
-                new XAttribute("Sdk", "Microsoft.Build.Traversal")));
+                new XAttribute("Sdk", traversalSdk)));
 
         var root = doc.Root!;
 
         // Add conditional before-import
         root.Add(new XElement("Import",
-            new XAttribute("Project", beforeImportPath),
-            new XAttribute("Condition", $"Exists('{beforeImportPath}')")));
+            new XAttribute("Project", traversalBeforeImportPath),
+            new XAttribute("Condition", $"Exists('{traversalBeforeImportPath}')")));
 
         // Add project references
         var itemGroup = new XElement("ItemGroup");
 
         foreach (var projectPath in affectedProjectPaths.OrderBy(p => p, FullPathComparer.Default))
         {
-            var relativePath = ToRelativePath(projectPath, outputDir);
-            itemGroup.Add(new XElement("ProjectReference", new XAttribute("Include", relativePath)));
+            var traversalPath = ToTraversalPath(projectPath, outputDir);
+            itemGroup.Add(new XElement("ProjectReference", new XAttribute("Include", traversalPath)));
         }
 
         root.Add(itemGroup);
 
         // Add conditional after-import
         root.Add(new XElement("Import",
-            new XAttribute("Project", afterImportPath),
-            new XAttribute("Condition", $"Exists('{afterImportPath}')")));
+            new XAttribute("Project", traversalAfterImportPath),
+            new XAttribute("Condition", $"Exists('{traversalAfterImportPath}')")));
 
         var settings = new System.Xml.XmlWriterSettings
         {

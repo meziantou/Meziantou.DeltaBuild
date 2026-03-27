@@ -1,12 +1,16 @@
-<Project Sdk="Meziantou.NET.Sdk">
+<Project Sdk="Meziantou.NET.Sdk.Test">
   <PropertyGroup>
-    <TargetFramework>net10.0</TargetFramework>
     <OutputType>Exe</OutputType>
   </PropertyGroup>
   <ItemGroup>
     <PackageReference Include="Meziantou.Framework.InlineSnapshotTesting" />
     <PackageReference Include="Meziantou.Framework.TemporaryDirectory" />
+    <PackageReference Include="Meziantou.Xunit.ParallelTestFramework" />
     <PackageReference Include="xunit.v3" />
+    <PackageReference Include="xunit.runner.visualstudio">
+      <PrivateAssets>all</PrivateAssets>
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+    </PackageReference>
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\..\src\Meziantou.DeltaBuild\Meziantou.DeltaBuild.csproj" />

@@ -118,9 +118,18 @@ internal static class DeltaBuildEngine
             ? options.FullRebuildTriggerPatterns
             : DefaultFullRebuildTriggerPatterns;
 
-        if (IsFullRebuildTriggered(changedFiles, fullTriggerPatterns))
+        var fullRebuildTriggerFiles = GetMatchingTriggerFiles(changedFiles, fullTriggerPatterns);
+        if (fullRebuildTriggerFiles.Count > 0)
         {
-            log.WriteLine("Full rebuild triggered: a changed file matches a full-rebuild-trigger pattern.");
+            var globalTriggerFile = fullRebuildTriggerFiles[0];
+            log.WriteLine($"Full rebuild triggered by global file '{globalTriggerFile}'.");
+
+            foreach (var projectPath in projectPaths.OrderBy(p => p, FullPathComparer.Default))
+            {
+                var projectDisplayPath = ToRepositoryRelativePath(projectPath, repositoryPath);
+                log.WriteLine($"  Adding project '{projectDisplayPath}' because global file '{globalTriggerFile}' changed.");
+            }
+
             await OutputWriter.WriteAsync(options, input, projectPaths, log, cancellationToken);
             return 0;
         }
@@ -131,7 +140,7 @@ internal static class DeltaBuildEngine
             : DefaultHierarchicalRebuildTriggerPatterns;
 
         var hierarchicallyAffectedProjects = GetHierarchicallyAffectedProjects(
-            changedFiles, hierarchicalTriggerPatterns, projectPaths, repositoryPath, log);
+            changedFiles, hierarchicalTriggerPatterns, projectPaths, repositoryPath);
 
         // Step 7: Build project graph and analyze
         log.WriteLine($"Analyzing projects using engine: {options.Engine}");
@@ -146,16 +155,44 @@ internal static class DeltaBuildEngine
         var normalizedChangedFiles = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         foreach (var file in changedFiles)
         {
-            var absolutePath = FullPath.Combine(repositoryPath, file);
+            var normalizedFile = file.Replace('\\', '/');
+            var absolutePath = FullPath.Combine(repositoryPath, normalizedFile);
             normalizedChangedFiles.Add(ProjectGraphAnalyzer.NormalizePath(absolutePath));
         }
 
+        var changedFilePathByNormalizedPath = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var file in changedFiles)
+        {
+            var normalizedFile = file.Replace('\\', '/');
+            var absolutePath = FullPath.Combine(repositoryPath, normalizedFile);
+            var normalizedAbsolutePath = ProjectGraphAnalyzer.NormalizePath(absolutePath);
+
+            changedFilePathByNormalizedPath.TryAdd(normalizedAbsolutePath, normalizedFile);
+        }
+
+        var changedOwnedFileCounts = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+        foreach (var info in projectInfos.Values)
+        {
+            foreach (var ownedFile in info.OwnedFiles)
+            {
+                if (!normalizedChangedFiles.Contains(ownedFile))
+                    continue;
+
+                if (!changedOwnedFileCounts.TryAdd(ownedFile, 1))
+                {
+                    changedOwnedFileCounts[ownedFile]++;
+                }
+            }
+        }
+
         var directlyAffected = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var reasonByProjectPath = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
 
         // Include projects affected by hierarchical triggers
-        foreach (var project in hierarchicallyAffectedProjects)
+        foreach (var (projectPath, triggerFile) in hierarchicallyAffectedProjects)
         {
-            directlyAffected.Add(ProjectGraphAnalyzer.NormalizePath(project));
+            directlyAffected.Add(projectPath);
+            reasonByProjectPath.TryAdd(projectPath, $"hierarchical file '{triggerFile}' changed");
         }
 
         foreach (var (projectPath, info) in projectInfos)
@@ -164,8 +201,29 @@ internal static class DeltaBuildEngine
             {
                 if (normalizedChangedFiles.Contains(ownedFile))
                 {
+                    var changedFilePath = changedFilePathByNormalizedPath.TryGetValue(ownedFile, out var filePath)
+                        ? filePath
+                        : ToRepositoryRelativePath(FullPath.FromPath(ownedFile), repositoryPath);
+
+                    var isGlobalFile = changedOwnedFileCounts.TryGetValue(ownedFile, out var ownedFileCount) && ownedFileCount > 1;
+                    var reason = isGlobalFile
+                        ? $"global file '{changedFilePath}' changed"
+                        : $"file '{changedFilePath}' changed";
+
                     directlyAffected.Add(projectPath);
-                    log.WriteLine($"  Directly affected: {projectPath} (due to {ownedFile})");
+
+                    if (reasonByProjectPath.TryGetValue(projectPath, out var existingReason))
+                    {
+                        if (existingReason.StartsWith("hierarchical file", StringComparison.Ordinal))
+                        {
+                            reasonByProjectPath[projectPath] = reason;
+                        }
+                    }
+                    else
+                    {
+                        reasonByProjectPath[projectPath] = reason;
+                    }
+
                     break;
                 }
             }
@@ -173,8 +231,39 @@ internal static class DeltaBuildEngine
 
         log.WriteLine($"Directly affected: {directlyAffected.Count} project(s)");
 
-        // Step 9: Find transitive dependents
-        var allAffected = ProjectGraphAnalyzer.GetTransitiveDependents(directlyAffected, projectInfos);
+        // Step 9: Find transitive dependents and track reasons
+        var allAffected = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var queue = new Queue<string>();
+
+        foreach (var path in directlyAffected)
+        {
+            if (allAffected.Add(path))
+            {
+                queue.Enqueue(path);
+            }
+        }
+
+        while (queue.Count > 0)
+        {
+            var current = queue.Dequeue();
+
+            if (!projectInfos.TryGetValue(current, out var info))
+                continue;
+
+            foreach (var dependent in info.ReferencingProjectPaths)
+            {
+                if (!allAffected.Add(dependent))
+                    continue;
+
+                queue.Enqueue(dependent);
+
+                if (!reasonByProjectPath.ContainsKey(dependent))
+                {
+                    var currentDisplayPath = ToRepositoryRelativePath(FullPath.FromPath(current), repositoryPath);
+                    reasonByProjectPath[dependent] = $"it depends on affected project '{currentDisplayPath}'";
+                }
+            }
+        }
 
         // For SingleProject input, include all projects discovered by the graph as candidates.
         // For other formats (Traversal, SLN, SLNX), only the explicitly listed input projects are candidates.
@@ -193,13 +282,24 @@ internal static class DeltaBuildEngine
         var affectedInputProjects = allAffected
             .Where(p => inputProjectSet.Contains(p))
             .Select(FullPath.FromPath)
+            .OrderBy(p => p, FullPathComparer.Default)
             .ToList();
 
         log.WriteLine($"Total affected (including transitive dependents): {affectedInputProjects.Count} project(s)");
 
         foreach (var project in affectedInputProjects)
         {
-            log.WriteLine($"  Affected: {project}");
+            var normalizedProjectPath = ProjectGraphAnalyzer.NormalizePath(project);
+            var projectDisplayPath = ToRepositoryRelativePath(project, repositoryPath);
+
+            if (reasonByProjectPath.TryGetValue(normalizedProjectPath, out var reason))
+            {
+                log.WriteLine($"  Adding project '{projectDisplayPath}' because {reason}.");
+            }
+            else
+            {
+                log.WriteLine($"  Adding project '{projectDisplayPath}' because it is affected.");
+            }
         }
 
         // Step 10: Write output
@@ -236,10 +336,12 @@ internal static class DeltaBuildEngine
         return filtered;
     }
 
-    private static bool IsFullRebuildTriggered(IReadOnlyList<string> changedFiles, string[] triggerPatterns)
+    private static List<string> GetMatchingTriggerFiles(IReadOnlyList<string> changedFiles, string[] triggerPatterns)
     {
+        var matchingFiles = new List<string>();
+
         if (triggerPatterns.Length == 0)
-            return false;
+            return matchingFiles;
 
         var globs = triggerPatterns
             .Select(p => Glob.Parse(p, GlobOptions.None))
@@ -254,12 +356,13 @@ internal static class DeltaBuildEngine
             {
                 if (glob.IsMatch(normalizedFile))
                 {
-                    return true;
+                    matchingFiles.Add(normalizedFile);
+                    break;
                 }
             }
         }
 
-        return false;
+        return matchingFiles;
     }
 
     /// <summary>
@@ -267,14 +370,13 @@ internal static class DeltaBuildEngine
     /// is the same as or below the changed file's directory. For example, if "src/global.json" changes,
     /// projects under "src/" are affected but projects under "tests/" are not.
     /// </summary>
-    private static HashSet<FullPath> GetHierarchicallyAffectedProjects(
+    private static Dictionary<string, string> GetHierarchicallyAffectedProjects(
         IReadOnlyList<string> changedFiles,
         string[] triggerPatterns,
         IReadOnlyList<FullPath> projectPaths,
-        FullPath repositoryPath,
-        TextWriter log)
+        FullPath repositoryPath)
     {
-        var affected = new HashSet<FullPath>();
+        var affected = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
 
         if (triggerPatterns.Length == 0)
             return affected;
@@ -311,7 +413,8 @@ internal static class DeltaBuildEngine
 
             foreach (var projectPath in projectPaths)
             {
-                if (affected.Contains(projectPath))
+                var normalizedProjectPath = ProjectGraphAnalyzer.NormalizePath(projectPath);
+                if (affected.ContainsKey(normalizedProjectPath))
                     continue;
 
                 var projectRelative = projectPath.MakePathRelativeTo(repositoryPath).Replace('\\', '/');
@@ -321,12 +424,16 @@ internal static class DeltaBuildEngine
                 // An empty trigger dir (root-level file) affects all projects
                 if (triggerDir.Length == 0 || projectRelative.StartsWith(triggerDir, StringComparison.OrdinalIgnoreCase))
                 {
-                    affected.Add(projectPath);
-                    log.WriteLine($"  Hierarchical trigger: {projectPath} (due to {triggerFile})");
+                    affected.TryAdd(normalizedProjectPath, triggerFile);
                 }
             }
         }
 
         return affected;
+    }
+
+    private static string ToRepositoryRelativePath(FullPath path, FullPath repositoryPath)
+    {
+        return path.MakePathRelativeTo(repositoryPath).Replace('\\', '/');
     }
 }

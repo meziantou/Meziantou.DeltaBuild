@@ -99,6 +99,7 @@ This is useful for quickly checking which projects your local modifications affe
 | `--hierarchical-rebuild-trigger` | | `**/global.json`, `**/nuget.config`, `**/NuGet.config`, `**/NuGet.Config`, `**/.editorconfig` | Glob patterns for files that trigger a rebuild of **projects in the same folder hierarchy**. For example, changing `src/global.json` rebuilds projects under `src/` but not under `tests/`. A match at the repository root affects all projects. Repeatable. Replaces defaults when provided. |
 | `--engine` | | `MSBuild` | The analysis engine to use (see below). |
 | `--traversal-before-import` | | `<output-name>.before.proj` | Path of the import added before the `<ProjectReference>` items in the generated Traversal SDK file. |
+| `--traversal-sdk-version` | | *(none)* | Optional version appended to the Traversal SDK in generated Traversal SDK files. When set to `x.y.z`, generated files use `Sdk="Microsoft.Build.Traversal/x.y.z"`. |
 | `--traversal-after-import` | | `<output-name>.after.proj` | Path of the import added after the `<ProjectReference>` items in the generated Traversal SDK file. |
 
 ### Analysis engines
@@ -128,7 +129,7 @@ This is useful for quickly checking which projects your local modifications affe
 |-----------|--------|
 | `.sln` | Visual Studio solution (v12) |
 | `.slnx` | XML-based solution (Visual Studio 2022+) |
-| `.proj` | MSBuild Traversal SDK project with `<ProjectReference>` items. Automatically imports `<output>.before.proj` and `<output>.after.proj` if they exist, allowing you to inject custom MSBuild logic. |
+| `.proj` | MSBuild Traversal SDK project with `<ProjectReference>` items. All generated paths are prefixed with `$(MSBuildThisFileDirectory)` for stable path resolution. Automatically imports `<output>.before.proj` and `<output>.after.proj` if they exist, allowing you to inject custom MSBuild logic. |
 | `.json` | JSON array of affected project paths |
 | `.txt` | One project path per line |
 

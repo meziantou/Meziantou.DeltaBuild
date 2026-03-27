@@ -6,6 +6,7 @@
   },
   "msbuild-sdks": {
     "Meziantou.NET.Sdk": "1.0.73",
+    "Meziantou.NET.Sdk.Test": "1.0.73",
     "Microsoft.Build.Traversal": "4.1.82"
   }
 }
