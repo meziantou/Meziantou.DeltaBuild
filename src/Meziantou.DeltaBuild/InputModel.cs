@@ -1,4 +1,3 @@
-using System.Xml.Linq;
 using Meziantou.Framework;
 using Microsoft.VisualStudio.SolutionPersistence.Model;
 
@@ -14,9 +13,4 @@ internal sealed class InputModel
     /// The original SolutionModel, preserved for round-trip output (SLN/SLNX).
     /// </summary>
     public SolutionModel? SolutionModel { get; init; }
-
-    /// <summary>
-    /// The original XDocument, preserved for round-trip output (Traversal).
-    /// </summary>
-    public XDocument? TraversalDocument { get; init; }
 }

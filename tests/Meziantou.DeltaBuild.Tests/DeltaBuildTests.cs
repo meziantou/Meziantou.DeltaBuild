@@ -2983,4 +2983,156 @@ public sealed class DeltaBuildTests(ITestOutputHelper output) : IAsyncDisposable
             </Project>
             """);
     }
+
+    [Fact]
+    public async Task TraversalWithGlobbing_ProjectsDiscoveredAndIncluded()
+    {
+        var repo = await CreateRepositoryAsync();
+
+        // Commit 1: Create two projects and a traversal that uses a glob pattern
+        repo.CreateCommit(
+            ("src/App1/App1.csproj", """
+                <Project Sdk="Microsoft.NET.Sdk">
+                  <PropertyGroup>
+                    <TargetFramework>net10.0</TargetFramework>
+                    <OutputType>Exe</OutputType>
+                  </PropertyGroup>
+                </Project>
+                """),
+            ("src/App1/Program.cs", """
+                Console.WriteLine("App1");
+                """),
+            ("src/App2/App2.csproj", """
+                <Project Sdk="Microsoft.NET.Sdk">
+                  <PropertyGroup>
+                    <TargetFramework>net10.0</TargetFramework>
+                    <OutputType>Exe</OutputType>
+                  </PropertyGroup>
+                </Project>
+                """),
+            ("src/App2/Program.cs", """
+                Console.WriteLine("App2");
+                """),
+            ("dirs.proj", """
+                <Project Sdk="Microsoft.Build.Traversal">
+                  <ItemGroup>
+                    <ProjectReference Include="src/**/*.*proj" />
+                  </ItemGroup>
+                </Project>
+                """)
+        );
+
+        // Commit 2: Only modify App1
+        repo.CreateCommit(
+            ("src/App1/Program.cs", """
+                Console.WriteLine("App1 modified");
+                """)
+        );
+
+        var outputPath = Path.Combine(repo.RepositoryPath, "output.proj");
+        await RunTool(
+            "generate",
+            "--input", Path.Combine(repo.RepositoryPath, "dirs.proj"),
+            "--output", outputPath,
+            "--repository", repo.RepositoryPath,
+            "--base-commit", repo.Commits[^2],
+            "--head-commit", repo.Commits[^1]);
+
+        var content = await File.ReadAllTextAsync(outputPath, TestContext.Current.CancellationToken);
+        InlineSnapshot.Validate(content.Trim(), """
+            <Project Sdk="Microsoft.Build.Traversal">
+              <Import Project="output.before.proj" Condition="Exists('output.before.proj')" />
+              <ItemGroup>
+                <ProjectReference Include="src/App1/App1.csproj" />
+              </ItemGroup>
+              <Import Project="output.after.proj" Condition="Exists('output.after.proj')" />
+            </Project>
+            """);
+    }
+
+    [Fact]
+    public async Task TraversalWithIncludeAndRemove_RemovedProjectExcluded()
+    {
+        var repo = await CreateRepositoryAsync();
+
+        // Commit 1: Create three projects and a traversal that includes all then removes one
+        repo.CreateCommit(
+            ("src/App1/App1.csproj", """
+                <Project Sdk="Microsoft.NET.Sdk">
+                  <PropertyGroup>
+                    <TargetFramework>net10.0</TargetFramework>
+                    <OutputType>Exe</OutputType>
+                  </PropertyGroup>
+                </Project>
+                """),
+            ("src/App1/Program.cs", """
+                Console.WriteLine("App1");
+                """),
+            ("src/App2/App2.csproj", """
+                <Project Sdk="Microsoft.NET.Sdk">
+                  <PropertyGroup>
+                    <TargetFramework>net10.0</TargetFramework>
+                    <OutputType>Exe</OutputType>
+                  </PropertyGroup>
+                </Project>
+                """),
+            ("src/App2/Program.cs", """
+                Console.WriteLine("App2");
+                """),
+            ("src/Excluded/Excluded.csproj", """
+                <Project Sdk="Microsoft.NET.Sdk">
+                  <PropertyGroup>
+                    <TargetFramework>net10.0</TargetFramework>
+                    <OutputType>Exe</OutputType>
+                  </PropertyGroup>
+                </Project>
+                """),
+            ("src/Excluded/Program.cs", """
+                Console.WriteLine("Excluded");
+                """),
+            ("dirs.proj", """
+                <Project Sdk="Microsoft.Build.Traversal">
+                  <ItemGroup>
+                    <ProjectReference Include="src/**/*.*proj" />
+                    <ProjectReference Remove="src/Excluded/Excluded.csproj" />
+                  </ItemGroup>
+                </Project>
+                """)
+        );
+
+        // Commit 2: Modify all three projects
+        repo.CreateCommit(
+            ("src/App1/Program.cs", """
+                Console.WriteLine("App1 modified");
+                """),
+            ("src/App2/Program.cs", """
+                Console.WriteLine("App2 modified");
+                """),
+            ("src/Excluded/Program.cs", """
+                Console.WriteLine("Excluded modified");
+                """)
+        );
+
+        var outputPath = Path.Combine(repo.RepositoryPath, "output.proj");
+        await RunTool(
+            "generate",
+            "--input", Path.Combine(repo.RepositoryPath, "dirs.proj"),
+            "--output", outputPath,
+            "--repository", repo.RepositoryPath,
+            "--base-commit", repo.Commits[^2],
+            "--head-commit", repo.Commits[^1]);
+
+        var content = await File.ReadAllTextAsync(outputPath, TestContext.Current.CancellationToken);
+        // Excluded.csproj should NOT appear because it was removed from ProjectReference
+        InlineSnapshot.Validate(content.Trim(), """
+            <Project Sdk="Microsoft.Build.Traversal">
+              <Import Project="output.before.proj" Condition="Exists('output.before.proj')" />
+              <ItemGroup>
+                <ProjectReference Include="src/App1/App1.csproj" />
+                <ProjectReference Include="src/App2/App2.csproj" />
+              </ItemGroup>
+              <Import Project="output.after.proj" Condition="Exists('output.after.proj')" />
+            </Project>
+            """);
+    }
 }

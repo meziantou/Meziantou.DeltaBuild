@@ -1,4 +1,3 @@
-using System.Xml.Linq;
 using Meziantou.Framework;
 using Microsoft.VisualStudio.SolutionPersistence.Model;
 using Microsoft.VisualStudio.SolutionPersistence.Serializer;
@@ -107,23 +106,8 @@ internal static class InputReader
 
     private static async Task<InputModel> ReadTraversalAsync(FullPath fullPath, CancellationToken cancellationToken)
     {
-        using var stream = File.OpenRead(fullPath);
-        var doc = await XDocument.LoadAsync(stream, LoadOptions.PreserveWhitespace, cancellationToken);
-
-        var projectDir = fullPath.Parent;
-        XNamespace ns = doc.Root?.Name.Namespace ?? XNamespace.None;
-
-        var paths = new List<FullPath>();
-
-        foreach (var projectRef in doc.Descendants(ns + "ProjectReference"))
-        {
-            var include = projectRef.Attribute("Include")?.Value;
-            if (include is null)
-                continue;
-
-            var absolutePath = FullPath.Combine(projectDir, include);
-            paths.Add(absolutePath);
-        }
+        // Use MSBuild evaluation to properly handle globbing and Include/Remove semantics
+        var paths = MsBuildTraversalReader.GetProjectReferences(fullPath);
 
         // If no ProjectReference items found, it might be a single project file
         if (paths.Count == 0 && IsSingleProjectExtension(fullPath.Extension))
@@ -136,7 +120,6 @@ internal static class InputReader
             Format = InputFormat.Traversal,
             InputFilePath = fullPath,
             ProjectAbsolutePaths = paths,
-            TraversalDocument = doc,
         };
     }
 
