@@ -14,7 +14,7 @@ internal static class MsBuildTraversalReader
     public static List<FullPath> GetProjectReferences(FullPath projectFilePath)
     {
         using var projectCollection = new ProjectCollection();
-        var project = new Project(projectFilePath.Value, globalProperties: null, toolsVersion: null, projectCollection);
+        var project = new Project(projectFilePath.Value, globalProperties: null, toolsVersion: null, projectCollection, ProjectLoadSettings.IgnoreMissingImports);
 
         var projectDir = projectFilePath.Parent;
         var paths = new List<FullPath>();
