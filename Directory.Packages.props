@@ -4,7 +4,7 @@
     <NoWarn>$(NoWarn);NU1903</NoWarn>
   </PropertyGroup>
   <ItemGroup>
-    <PackageVersion Include="Meziantou.Xunit.ParallelTestFramework" Version="2.3.0" />
+    <PackageVersion Include="Meziantou.Xunit.v3.ParallelTestFramework" Version="1.0.6" />
     <PackageVersion Include="Microsoft.Build" Version="18.4.0" />
     <PackageVersion Include="Microsoft.Build.Framework" Version="18.4.0" />
     <PackageVersion Include="Microsoft.Build.Locator" Version="1.11.2" />

@@ -5,7 +5,7 @@
   <ItemGroup>
     <PackageReference Include="Meziantou.Framework.InlineSnapshotTesting" />
     <PackageReference Include="Meziantou.Framework.TemporaryDirectory" />
-    <PackageReference Include="Meziantou.Xunit.ParallelTestFramework" />
+    <PackageReference Include="Meziantou.Xunit.v3.ParallelTestFramework" />
     <PackageReference Include="xunit.v3" />
     <PackageReference Include="xunit.runner.visualstudio">
       <PrivateAssets>all</PrivateAssets>
