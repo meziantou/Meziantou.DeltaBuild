@@ -45,7 +45,7 @@ internal static class Program
 
         var baseBranchOption = new Option<string?>("--base-branch")
         {
-            Description = "The base branch for merge-base detection (default: auto-detected from remote)",
+            Description = "The base branch for merge-base detection (default: auto-detected from GitHub Actions PR context or remote)",
         };
 
         var workingTreeOption = new Option<bool>("--working-tree")

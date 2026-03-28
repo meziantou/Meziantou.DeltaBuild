@@ -59,6 +59,7 @@
 	- `Program.cs`
 	- relevant tests
 	- `README.md` when the user-facing behavior changes
+- If you make a feature change to the tool project, increment `<Version>` in `src/Meziantou.DeltaBuild/Meziantou.DeltaBuild.csproj`.
 - If you modify project graph analysis or affected-file detection, consider the impact on all supported engines: `MSBuild`, `RoslynWorkspace`, and `StaticGraph`.
 - If you modify generated output, update or add assertions that validate the exact output format.
 

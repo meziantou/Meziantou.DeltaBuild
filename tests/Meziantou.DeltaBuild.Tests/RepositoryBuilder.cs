@@ -51,6 +51,18 @@ internal sealed class RepositoryBuilder : IAsyncDisposable
         return this;
     }
 
+    public RepositoryBuilder SetRemoteTrackingBranch(string branchName, string commitSha)
+    {
+        RunGit("update-ref", $"refs/remotes/origin/{branchName}", commitSha);
+        return this;
+    }
+
+    public RepositoryBuilder SetDefaultRemoteBranch(string branchName)
+    {
+        RunGit("symbolic-ref", "refs/remotes/origin/HEAD", $"refs/remotes/origin/{branchName}");
+        return this;
+    }
+
     public async Task InitializeAsync()
     {
         RunGit("init");
