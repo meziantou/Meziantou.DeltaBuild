@@ -45,8 +45,16 @@ internal static class DeltaBuildEngine
             var baseBranch = options.BaseBranch;
             if (string.IsNullOrEmpty(baseBranch))
             {
-                baseBranch = await GitHelper.GetDefaultBranchAsync(repositoryPath, cancellationToken);
-                log.WriteLine($"Auto-detected base branch: {baseBranch}");
+                baseBranch = TryGetGitHubActionsPullRequestBaseBranch();
+                if (string.IsNullOrEmpty(baseBranch))
+                {
+                    baseBranch = await GitHelper.GetDefaultBranchAsync(repositoryPath, cancellationToken);
+                    log.WriteLine($"Auto-detected base branch: {baseBranch}");
+                }
+                else
+                {
+                    log.WriteLine($"Detected GitHub Actions pull request context, using base branch: {baseBranch}");
+                }
             }
 
             var mergeBaseRef = headCommit ?? "HEAD";
@@ -306,6 +314,30 @@ internal static class DeltaBuildEngine
         await OutputWriter.WriteAsync(options, input, affectedInputProjects, log, cancellationToken);
 
         return 0;
+    }
+
+    private static string? TryGetGitHubActionsPullRequestBaseBranch()
+    {
+        if (!string.Equals(Environment.GetEnvironmentVariable("GITHUB_ACTIONS"), "true", StringComparison.OrdinalIgnoreCase))
+            return null;
+
+        var eventName = Environment.GetEnvironmentVariable("GITHUB_EVENT_NAME");
+        var isPullRequestEvent = string.Equals(eventName, "pull_request", StringComparison.OrdinalIgnoreCase) ||
+                                 string.Equals(eventName, "pull_request_target", StringComparison.OrdinalIgnoreCase);
+        if (!isPullRequestEvent)
+            return null;
+
+        var baseRef = Environment.GetEnvironmentVariable("GITHUB_BASE_REF");
+        if (string.IsNullOrWhiteSpace(baseRef))
+            return null;
+
+        const string HeadsPrefix = "refs/heads/";
+        if (baseRef.StartsWith(HeadsPrefix, StringComparison.Ordinal))
+        {
+            baseRef = baseRef[HeadsPrefix.Length..];
+        }
+
+        return $"origin/{baseRef}";
     }
 
     private static List<FullPath> FilterProjectsByGlobs(

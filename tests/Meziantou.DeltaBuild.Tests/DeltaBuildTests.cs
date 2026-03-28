@@ -20,6 +20,11 @@ public sealed class DeltaBuildTests(ITestOutputHelper output) : IAsyncDisposable
         return ToolRunner.RunToolAsync(output, args);
     }
 
+    private Task<string> RunTool(IReadOnlyDictionary<string, string?> environmentVariables, params string[] args)
+    {
+        return ToolRunner.RunToolAsync(output, environmentVariables, args);
+    }
+
     public async ValueTask DisposeAsync()
     {
         foreach (var repo in _repos)
@@ -3079,6 +3084,108 @@ public sealed class DeltaBuildTests(ITestOutputHelper output) : IAsyncDisposable
               <Import Project="$(MSBuildThisFileDirectory)output.after.proj" Condition="Exists('$(MSBuildThisFileDirectory)output.after.proj')" />
             </Project>
             """);
+    }
+
+    [Fact]
+    public async Task PullRequestEnvironment_UsesGitHubBaseRefForMergeBase()
+    {
+        var repo = await CreateRepositoryAsync();
+
+        repo.CreateCommit(
+            ("src/App/App.csproj", """
+                <Project Sdk="Microsoft.NET.Sdk">
+                  <PropertyGroup>
+                    <TargetFramework>net10.0</TargetFramework>
+                  </PropertyGroup>
+                </Project>
+                """),
+            ("src/App/Program.cs", """
+                Console.WriteLine("main");
+                """),
+            ("dirs.proj", """
+                <Project Sdk="Microsoft.Build.Traversal">
+                  <ItemGroup>
+                    <ProjectReference Include="src/App/App.csproj" />
+                  </ItemGroup>
+                </Project>
+                """)
+        );
+
+        var mergeBaseCommit = repo.Commits[^1];
+
+        repo.CreateCommit(
+            ("src/App/Program.cs", """
+                Console.WriteLine("pr branch");
+                """)
+        );
+        repo.SetRemoteTrackingBranch("main", mergeBaseCommit)
+            .SetDefaultRemoteBranch("main");
+
+        var outputPath = Path.Combine(repo.RepositoryPath, "output.proj");
+        var stdout = await RunTool(
+            new Dictionary<string, string?>(StringComparer.Ordinal)
+            {
+                ["GITHUB_ACTIONS"] = "true",
+                ["GITHUB_EVENT_NAME"] = "pull_request",
+                ["GITHUB_BASE_REF"] = "main",
+            },
+            "generate",
+            "--input", Path.Combine(repo.RepositoryPath, "dirs.proj"),
+            "--output", outputPath,
+            "--repository", repo.RepositoryPath);
+
+        Assert.Contains("Detected GitHub Actions pull request context, using base branch: origin/main", stdout, StringComparison.Ordinal);
+        Assert.Contains($"Comparing {mergeBaseCommit} -> {repo.Commits[^1]}", stdout, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task PullRequestEnvironment_IgnoresBaseRefOutsidePullRequestEvents()
+    {
+        var repo = await CreateRepositoryAsync();
+
+        repo.CreateCommit(
+            ("src/App/App.csproj", """
+                <Project Sdk="Microsoft.NET.Sdk">
+                  <PropertyGroup>
+                    <TargetFramework>net10.0</TargetFramework>
+                  </PropertyGroup>
+                </Project>
+                """),
+            ("src/App/Program.cs", """
+                Console.WriteLine("main");
+                """),
+            ("dirs.proj", """
+                <Project Sdk="Microsoft.Build.Traversal">
+                  <ItemGroup>
+                    <ProjectReference Include="src/App/App.csproj" />
+                  </ItemGroup>
+                </Project>
+                """)
+        );
+
+        repo.CreateCommit(
+            ("src/App/Program.cs", """
+                Console.WriteLine("push");
+                """)
+        );
+        repo.SetRemoteTrackingBranch("main", repo.Commits[^2])
+            .SetDefaultRemoteBranch("main");
+
+        var outputPath = Path.Combine(repo.RepositoryPath, "output.proj");
+        var stdout = await RunTool(
+            new Dictionary<string, string?>(StringComparer.Ordinal)
+            {
+                ["GITHUB_ACTIONS"] = "true",
+                ["GITHUB_EVENT_NAME"] = "push",
+                ["GITHUB_BASE_REF"] = "main",
+            },
+            "generate",
+            "--input", Path.Combine(repo.RepositoryPath, "dirs.proj"),
+            "--output", outputPath,
+            "--repository", repo.RepositoryPath);
+
+        Assert.Contains("Auto-detected base branch: origin/main", stdout, StringComparison.Ordinal);
+        Assert.DoesNotContain("Detected GitHub Actions pull request context", stdout, StringComparison.Ordinal);
     }
 
     [Fact]

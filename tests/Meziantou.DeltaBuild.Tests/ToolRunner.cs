@@ -10,6 +10,14 @@ internal static class ToolRunner
         ITestOutputHelper output,
         params string[] args)
     {
+        return await RunToolRawAsync(output, null, args);
+    }
+
+    public static async Task<ToolResult> RunToolRawAsync(
+        ITestOutputHelper output,
+        IReadOnlyDictionary<string, string?>? environmentVariables,
+        params string[] args)
+    {
         // Find the tool assembly
         var toolAssemblyPath = GetToolAssemblyPath();
 
@@ -28,6 +36,8 @@ internal static class ToolRunner
         {
             psi.ArgumentList.Add(arg);
         }
+
+        AddEnvironmentVariables(psi, environmentVariables);
 
         output.WriteLine($"Running: dotnet {toolAssemblyPath} {string.Join(' ', args)}");
 
@@ -65,6 +75,14 @@ internal static class ToolRunner
         ITestOutputHelper output,
         params string[] args)
     {
+        return await RunToolAsync(output, null, args);
+    }
+
+    public static async Task<string> RunToolAsync(
+        ITestOutputHelper output,
+        IReadOnlyDictionary<string, string?>? environmentVariables,
+        params string[] args)
+    {
         // Find the tool assembly
         var toolAssemblyPath = GetToolAssemblyPath();
 
@@ -83,6 +101,8 @@ internal static class ToolRunner
         {
             psi.ArgumentList.Add(arg);
         }
+
+        AddEnvironmentVariables(psi, environmentVariables);
 
         output.WriteLine($"Running: dotnet {toolAssemblyPath} {string.Join(' ', args)}");
 
@@ -127,7 +147,7 @@ internal static class ToolRunner
         // Navigate from the test assembly location to the tool's output
         var testAssemblyDir = Path.GetDirectoryName(typeof(ToolRunner).Assembly.Location)!;
 
-        // Go up to the repo root (tests/Meziantou.DeltaBuild.Tests/bin/Debug/net10.0 -> root)
+        // Go up to the repo root (tests/Meziantou.DeltaBuild.Tests/bin/Debug/<tfm> -> root)
         var repoRoot = Path.GetFullPath(Path.Combine(testAssemblyDir, "..", "..", "..", "..", ".."));
         var toolProject = Path.Combine(repoRoot, "src", "Meziantou.DeltaBuild");
 
@@ -138,15 +158,38 @@ internal static class ToolRunner
 #else
         const string Configuration = "Release";
 #endif
-        var toolAssembly = Path.Combine(toolProject, "bin", Configuration, "net10.0", "Meziantou.DeltaBuild.dll");
+        var outputDirectory = Path.Combine(toolProject, "bin", Configuration);
+        var toolAssembly = Directory.Exists(outputDirectory)
+            ? Directory.GetFiles(outputDirectory, "Meziantou.DeltaBuild.dll", SearchOption.AllDirectories)
+                .Where(path => !path.Contains($"{Path.DirectorySeparatorChar}ref{Path.DirectorySeparatorChar}", StringComparison.OrdinalIgnoreCase))
+                .OrderByDescending(File.GetLastWriteTimeUtc)
+                .FirstOrDefault()
+            : null;
 
-        if (!File.Exists(toolAssembly))
+        if (toolAssembly is null)
         {
             throw new FileNotFoundException(
-                $"Tool assembly not found at {toolAssembly}. Ensure the tool project is built before running tests.",
-                toolAssembly);
+                $"Tool assembly not found in {outputDirectory}. Ensure the tool project is built before running tests.");
         }
 
         return toolAssembly;
+    }
+
+    private static void AddEnvironmentVariables(ProcessStartInfo psi, IReadOnlyDictionary<string, string?>? environmentVariables)
+    {
+        if (environmentVariables is null)
+            return;
+
+        foreach (var (key, value) in environmentVariables)
+        {
+            if (value is null)
+            {
+                psi.Environment.Remove(key);
+            }
+            else
+            {
+                psi.Environment[key] = value;
+            }
+        }
     }
 }
