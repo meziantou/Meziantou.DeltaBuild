@@ -3339,4 +3339,308 @@ public sealed class DeltaBuildTests(ITestOutputHelper output) : IAsyncDisposable
             </Project>
             """);
     }
+
+    [Fact]
+    public async Task ProjectBundle_ChangedProjectIncludesBundledProject()
+    {
+        var repo = await CreateRepositoryAsync();
+
+        repo.CreateCommit(
+            ("src/B/B.csproj", """
+                <Project Sdk="Microsoft.NET.Sdk">
+                  <PropertyGroup>
+                    <TargetFramework>net10.0</TargetFramework>
+                  </PropertyGroup>
+                </Project>
+                """),
+            ("src/B/Class1.cs", """
+                namespace B;
+                public class Class1 { }
+                """),
+            ("src/C/C.csproj", """
+                <Project Sdk="Microsoft.NET.Sdk">
+                  <PropertyGroup>
+                    <TargetFramework>net10.0</TargetFramework>
+                  </PropertyGroup>
+                </Project>
+                """),
+            ("src/C/Class1.cs", """
+                namespace C;
+                public class Class1 { }
+                """),
+            ("src/U/U.csproj", """
+                <Project Sdk="Microsoft.NET.Sdk">
+                  <PropertyGroup>
+                    <TargetFramework>net10.0</TargetFramework>
+                  </PropertyGroup>
+                </Project>
+                """),
+            ("src/U/Class1.cs", """
+                namespace U;
+                public class Class1 { }
+                """),
+            ("dirs.proj", """
+                <Project Sdk="Microsoft.Build.Traversal">
+                  <ItemGroup>
+                    <ProjectReference Include="src/B/B.csproj" />
+                    <ProjectReference Include="src/C/C.csproj" />
+                    <ProjectReference Include="src/U/U.csproj" />
+                  </ItemGroup>
+                </Project>
+                """)
+        );
+
+        repo.CreateCommit(
+            ("src/B/Class1.cs", """
+                namespace B;
+                public class Class1 { public int Value { get; set; } }
+                """)
+        );
+
+        var outputPath = Path.Combine(repo.RepositoryPath, "output.proj");
+        await RunTool(
+            "generate",
+            "--input", Path.Combine(repo.RepositoryPath, "dirs.proj"),
+            "--output", outputPath,
+            "--repository", repo.RepositoryPath,
+            "--base-commit", repo.Commits[^2],
+            "--head-commit", repo.Commits[^1],
+            "--project-bundle", "src/B/B.csproj,src/C/C.csproj");
+
+        var content = await File.ReadAllTextAsync(outputPath, TestContext.Current.CancellationToken);
+        InlineSnapshot.Validate(content.Trim(), """
+            <Project Sdk="Microsoft.Build.Traversal">
+              <Import Project="$(MSBuildThisFileDirectory)output.before.proj" Condition="Exists('$(MSBuildThisFileDirectory)output.before.proj')" />
+              <ItemGroup>
+                <ProjectReference Include="$(MSBuildThisFileDirectory)src/B/B.csproj" />
+                <ProjectReference Include="$(MSBuildThisFileDirectory)src/C/C.csproj" />
+              </ItemGroup>
+              <Import Project="$(MSBuildThisFileDirectory)output.after.proj" Condition="Exists('$(MSBuildThisFileDirectory)output.after.proj')" />
+            </Project>
+            """);
+    }
+
+    [Fact]
+    public async Task ProjectBundle_IsSymmetric()
+    {
+        var repo = await CreateRepositoryAsync();
+
+        repo.CreateCommit(
+            ("src/B/B.csproj", """
+                <Project Sdk="Microsoft.NET.Sdk">
+                  <PropertyGroup>
+                    <TargetFramework>net10.0</TargetFramework>
+                  </PropertyGroup>
+                </Project>
+                """),
+            ("src/B/Class1.cs", """
+                namespace B;
+                public class Class1 { }
+                """),
+            ("src/C/C.csproj", """
+                <Project Sdk="Microsoft.NET.Sdk">
+                  <PropertyGroup>
+                    <TargetFramework>net10.0</TargetFramework>
+                  </PropertyGroup>
+                </Project>
+                """),
+            ("src/C/Class1.cs", """
+                namespace C;
+                public class Class1 { }
+                """),
+            ("src/U/U.csproj", """
+                <Project Sdk="Microsoft.NET.Sdk">
+                  <PropertyGroup>
+                    <TargetFramework>net10.0</TargetFramework>
+                  </PropertyGroup>
+                </Project>
+                """),
+            ("src/U/Class1.cs", """
+                namespace U;
+                public class Class1 { }
+                """),
+            ("dirs.proj", """
+                <Project Sdk="Microsoft.Build.Traversal">
+                  <ItemGroup>
+                    <ProjectReference Include="src/B/B.csproj" />
+                    <ProjectReference Include="src/C/C.csproj" />
+                    <ProjectReference Include="src/U/U.csproj" />
+                  </ItemGroup>
+                </Project>
+                """)
+        );
+
+        repo.CreateCommit(
+            ("src/C/Class1.cs", """
+                namespace C;
+                public class Class1 { public int Value { get; set; } }
+                """)
+        );
+
+        var outputPath = Path.Combine(repo.RepositoryPath, "output.proj");
+        await RunTool(
+            "generate",
+            "--input", Path.Combine(repo.RepositoryPath, "dirs.proj"),
+            "--output", outputPath,
+            "--repository", repo.RepositoryPath,
+            "--base-commit", repo.Commits[^2],
+            "--head-commit", repo.Commits[^1],
+            "--project-bundle", "src/B/B.csproj,src/C/C.csproj");
+
+        var content = await File.ReadAllTextAsync(outputPath, TestContext.Current.CancellationToken);
+        InlineSnapshot.Validate(content.Trim(), """
+            <Project Sdk="Microsoft.Build.Traversal">
+              <Import Project="$(MSBuildThisFileDirectory)output.before.proj" Condition="Exists('$(MSBuildThisFileDirectory)output.before.proj')" />
+              <ItemGroup>
+                <ProjectReference Include="$(MSBuildThisFileDirectory)src/B/B.csproj" />
+                <ProjectReference Include="$(MSBuildThisFileDirectory)src/C/C.csproj" />
+              </ItemGroup>
+              <Import Project="$(MSBuildThisFileDirectory)output.after.proj" Condition="Exists('$(MSBuildThisFileDirectory)output.after.proj')" />
+            </Project>
+            """);
+    }
+
+    [Fact]
+    public async Task ProjectBundle_AddedProjectPropagatesToDependents()
+    {
+        var repo = await CreateRepositoryAsync();
+
+        repo.CreateCommit(
+            ("src/B/B.csproj", """
+                <Project Sdk="Microsoft.NET.Sdk">
+                  <PropertyGroup>
+                    <TargetFramework>net10.0</TargetFramework>
+                  </PropertyGroup>
+                </Project>
+                """),
+            ("src/B/Class1.cs", """
+                namespace B;
+                public class Class1 { }
+                """),
+            ("src/C/C.csproj", """
+                <Project Sdk="Microsoft.NET.Sdk">
+                  <PropertyGroup>
+                    <TargetFramework>net10.0</TargetFramework>
+                  </PropertyGroup>
+                </Project>
+                """),
+            ("src/C/Class1.cs", """
+                namespace C;
+                public class Class1 { }
+                """),
+            ("src/App/App.csproj", """
+                <Project Sdk="Microsoft.NET.Sdk">
+                  <PropertyGroup>
+                    <TargetFramework>net10.0</TargetFramework>
+                    <OutputType>Exe</OutputType>
+                  </PropertyGroup>
+                  <ItemGroup>
+                    <ProjectReference Include="../B/B.csproj" />
+                  </ItemGroup>
+                </Project>
+                """),
+            ("src/App/Program.cs", """
+                Console.WriteLine("App");
+                """),
+            ("dirs.proj", """
+                <Project Sdk="Microsoft.Build.Traversal">
+                  <ItemGroup>
+                    <ProjectReference Include="src/B/B.csproj" />
+                    <ProjectReference Include="src/C/C.csproj" />
+                    <ProjectReference Include="src/App/App.csproj" />
+                  </ItemGroup>
+                </Project>
+                """)
+        );
+
+        repo.CreateCommit(
+            ("src/C/Class1.cs", """
+                namespace C;
+                public class Class1 { public int Value { get; set; } }
+                """)
+        );
+
+        var outputPath = Path.Combine(repo.RepositoryPath, "output.proj");
+        await RunTool(
+            "generate",
+            "--input", Path.Combine(repo.RepositoryPath, "dirs.proj"),
+            "--output", outputPath,
+            "--repository", repo.RepositoryPath,
+            "--base-commit", repo.Commits[^2],
+            "--head-commit", repo.Commits[^1],
+            "--project-bundle", "src/B/B.csproj,src/C/C.csproj");
+
+        var content = await File.ReadAllTextAsync(outputPath, TestContext.Current.CancellationToken);
+        InlineSnapshot.Validate(content.Trim(), """
+            <Project Sdk="Microsoft.Build.Traversal">
+              <Import Project="$(MSBuildThisFileDirectory)output.before.proj" Condition="Exists('$(MSBuildThisFileDirectory)output.before.proj')" />
+              <ItemGroup>
+                <ProjectReference Include="$(MSBuildThisFileDirectory)src/App/App.csproj" />
+                <ProjectReference Include="$(MSBuildThisFileDirectory)src/B/B.csproj" />
+                <ProjectReference Include="$(MSBuildThisFileDirectory)src/C/C.csproj" />
+              </ItemGroup>
+              <Import Project="$(MSBuildThisFileDirectory)output.after.proj" Condition="Exists('$(MSBuildThisFileDirectory)output.after.proj')" />
+            </Project>
+            """);
+    }
+
+    [Fact]
+    public async Task ProjectBundle_InvalidProjectPath_FailsWithClearError()
+    {
+        var repo = await CreateRepositoryAsync();
+
+        repo.CreateCommit(
+            ("src/B/B.csproj", """
+                <Project Sdk="Microsoft.NET.Sdk">
+                  <PropertyGroup>
+                    <TargetFramework>net10.0</TargetFramework>
+                  </PropertyGroup>
+                </Project>
+                """),
+            ("src/B/Class1.cs", """
+                namespace B;
+                public class Class1 { }
+                """),
+            ("src/C/C.csproj", """
+                <Project Sdk="Microsoft.NET.Sdk">
+                  <PropertyGroup>
+                    <TargetFramework>net10.0</TargetFramework>
+                  </PropertyGroup>
+                </Project>
+                """),
+            ("src/C/Class1.cs", """
+                namespace C;
+                public class Class1 { }
+                """),
+            ("dirs.proj", """
+                <Project Sdk="Microsoft.Build.Traversal">
+                  <ItemGroup>
+                    <ProjectReference Include="src/B/B.csproj" />
+                    <ProjectReference Include="src/C/C.csproj" />
+                  </ItemGroup>
+                </Project>
+                """)
+        );
+
+        repo.CreateCommit(
+            ("src/B/Class1.cs", """
+                namespace B;
+                public class Class1 { public int Value { get; set; } }
+                """)
+        );
+
+        var outputPath = Path.Combine(repo.RepositoryPath, "output.proj");
+        var result = await ToolRunner.RunToolRawAsync(
+            output,
+            "generate",
+            "--input", Path.Combine(repo.RepositoryPath, "dirs.proj"),
+            "--output", outputPath,
+            "--repository", repo.RepositoryPath,
+            "--base-commit", repo.Commits[^2],
+            "--head-commit", repo.Commits[^1],
+            "--project-bundle", "src/B/B.csproj,src/Missing/Missing.csproj");
+
+        Assert.NotEqual(0, result.ExitCode);
+        Assert.Contains("not present in the input project set", result.Stderr + result.Stdout, StringComparison.Ordinal);
+    }
 }

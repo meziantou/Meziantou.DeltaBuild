@@ -71,6 +71,12 @@ internal static class Program
             AllowMultipleArgumentsPerToken = true,
         };
 
+        var projectBundleOption = new Option<string[]>("--project-bundle")
+        {
+            Description = "Comma-separated exact project paths that must be built together as a bundle (repeatable). Paths are relative to the repository root unless absolute.",
+            AllowMultipleArgumentsPerToken = true,
+        };
+
         var engineOption = new Option<AnalysisEngine>("--engine")
         {
             Description = "The analysis engine to use: MSBuild (default), RoslynWorkspace (uses Roslyn, more compatible), or StaticGraph (passes input file directly to MSBuild Static Graph API)",
@@ -104,6 +110,7 @@ internal static class Program
             includeOption,
             fullRebuildTriggerOption,
             hierarchicalRebuildTriggerOption,
+            projectBundleOption,
             engineOption,
             traversalBeforeImportOption,
             traversalSdkVersionOption,
@@ -124,6 +131,7 @@ internal static class Program
                 IncludePatterns = parseResult.GetValue(includeOption) ?? [],
                 FullRebuildTriggerPatterns = parseResult.GetValue(fullRebuildTriggerOption) ?? [],
                 HierarchicalRebuildTriggerPatterns = parseResult.GetValue(hierarchicalRebuildTriggerOption) ?? [],
+                ProjectBundles = parseResult.GetValue(projectBundleOption) ?? [],
                 Engine = parseResult.GetValue(engineOption),
                 TraversalBeforeImport = parseResult.GetValue(traversalBeforeImportOption),
                 TraversalSdkVersion = parseResult.GetValue(traversalSdkVersionOption),
