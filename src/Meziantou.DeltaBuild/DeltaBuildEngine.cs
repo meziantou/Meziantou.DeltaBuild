@@ -159,6 +159,26 @@ internal static class DeltaBuildEngine
             _ => ProjectGraphAnalyzer.Analyze(projectPaths, log),
         };
 
+        // For SingleProject input, include all projects discovered by the graph as candidates.
+        // For other formats (Traversal, SLN, SLNX), only the explicitly listed input projects are candidates.
+        HashSet<string> inputProjectSet;
+        if (input.Format == InputFormat.SingleProject)
+        {
+            inputProjectSet = new HashSet<string>(projectInfos.Keys, StringComparer.OrdinalIgnoreCase);
+        }
+        else
+        {
+            inputProjectSet = new HashSet<string>(
+                projectPaths.Select(p => ProjectGraphAnalyzer.NormalizePath(p)),
+                StringComparer.OrdinalIgnoreCase);
+        }
+
+        var (bundleMembersByProjectPath, bundleCount) = ParseProjectBundles(options.ProjectBundles, inputProjectSet, repositoryPath);
+        if (bundleCount > 0)
+        {
+            log.WriteLine($"Configured {bundleCount} project bundle(s).");
+        }
+
         // Step 8: Determine directly affected projects
         var normalizedChangedFiles = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         foreach (var file in changedFiles)
@@ -239,7 +259,7 @@ internal static class DeltaBuildEngine
 
         log.WriteLine($"Directly affected: {directlyAffected.Count} project(s)");
 
-        // Step 9: Find transitive dependents and track reasons
+        // Step 9: Expand affected projects using bundles and transitive dependents, and track reasons
         var allAffected = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         var queue = new Queue<string>();
 
@@ -254,6 +274,23 @@ internal static class DeltaBuildEngine
         while (queue.Count > 0)
         {
             var current = queue.Dequeue();
+            var currentDisplayPath = ToRepositoryRelativePath(FullPath.FromPath(current), repositoryPath);
+
+            if (bundleMembersByProjectPath.TryGetValue(current, out var bundledProjects))
+            {
+                foreach (var bundledProject in bundledProjects)
+                {
+                    if (!allAffected.Add(bundledProject))
+                        continue;
+
+                    queue.Enqueue(bundledProject);
+
+                    if (!reasonByProjectPath.ContainsKey(bundledProject))
+                    {
+                        reasonByProjectPath[bundledProject] = $"it is bundled with affected project '{currentDisplayPath}'";
+                    }
+                }
+            }
 
             if (!projectInfos.TryGetValue(current, out var info))
                 continue;
@@ -267,24 +304,9 @@ internal static class DeltaBuildEngine
 
                 if (!reasonByProjectPath.ContainsKey(dependent))
                 {
-                    var currentDisplayPath = ToRepositoryRelativePath(FullPath.FromPath(current), repositoryPath);
                     reasonByProjectPath[dependent] = $"it depends on affected project '{currentDisplayPath}'";
                 }
             }
-        }
-
-        // For SingleProject input, include all projects discovered by the graph as candidates.
-        // For other formats (Traversal, SLN, SLNX), only the explicitly listed input projects are candidates.
-        HashSet<string> inputProjectSet;
-        if (input.Format == InputFormat.SingleProject)
-        {
-            inputProjectSet = new HashSet<string>(projectInfos.Keys, StringComparer.OrdinalIgnoreCase);
-        }
-        else
-        {
-            inputProjectSet = new HashSet<string>(
-                projectPaths.Select(p => ProjectGraphAnalyzer.NormalizePath(p)),
-                StringComparer.OrdinalIgnoreCase);
         }
 
         var affectedInputProjects = allAffected
@@ -366,6 +388,82 @@ internal static class DeltaBuildEngine
         }
 
         return filtered;
+    }
+
+    private static (Dictionary<string, HashSet<string>> MembersByProjectPath, int BundleCount) ParseProjectBundles(
+        string[] bundleDefinitions,
+        IReadOnlySet<string> inputProjectSet,
+        FullPath repositoryPath)
+    {
+        var membersByProjectPath = new Dictionary<string, HashSet<string>>(StringComparer.OrdinalIgnoreCase);
+        var bundleCount = 0;
+
+        foreach (var definition in bundleDefinitions)
+        {
+            var members = definition
+                .Split(',', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries)
+                .Select(member => NormalizeBundleProjectPath(member, repositoryPath))
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToArray();
+
+            if (members.Length == 0)
+            {
+                throw new InvalidOperationException($"Project bundle '{definition}' does not contain any project path.");
+            }
+
+            var invalidMembers = members
+                .Where(member => !inputProjectSet.Contains(member))
+                .Select(member => ToRepositoryRelativePath(FullPath.FromPath(member), repositoryPath))
+                .OrderBy(member => member, StringComparer.OrdinalIgnoreCase)
+                .ToArray();
+            if (invalidMembers.Length > 0)
+            {
+                throw new InvalidOperationException(
+                    $"Project bundle '{definition}' references project(s) not present in the input project set: {string.Join(", ", invalidMembers)}.");
+            }
+
+            foreach (var member in members)
+            {
+                if (!membersByProjectPath.TryGetValue(member, out var bundledProjects))
+                {
+                    bundledProjects = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+                    membersByProjectPath[member] = bundledProjects;
+                }
+
+                foreach (var otherMember in members)
+                {
+                    if (!string.Equals(member, otherMember, StringComparison.OrdinalIgnoreCase))
+                    {
+                        bundledProjects.Add(otherMember);
+                    }
+                }
+            }
+
+            bundleCount++;
+        }
+
+        return (membersByProjectPath, bundleCount);
+    }
+
+    private static string NormalizeBundleProjectPath(string path, FullPath repositoryPath)
+    {
+        if (string.IsNullOrWhiteSpace(path))
+        {
+            throw new InvalidOperationException("Project bundle contains an empty project path.");
+        }
+
+        FullPath absolutePath;
+        if (Path.IsPathRooted(path))
+        {
+            absolutePath = FullPath.FromPath(path);
+        }
+        else
+        {
+            var normalizedPath = path.Replace('\\', '/');
+            absolutePath = FullPath.Combine(repositoryPath, normalizedPath);
+        }
+
+        return ProjectGraphAnalyzer.NormalizePath(absolutePath);
     }
 
     private static List<string> GetMatchingTriggerFiles(IReadOnlyList<string> changedFiles, string[] triggerPatterns)

@@ -97,6 +97,7 @@ This is useful for quickly checking which projects your local modifications affe
 | `--include` | | *(all projects)* | Glob patterns to filter which projects to consider. Repeatable. Only projects matching at least one pattern are included. |
 | `--full-rebuild-trigger` | | *(none)* | Glob patterns for files that trigger a **full rebuild of all projects**. When any changed file matches, every project is included in the output. Repeatable. Replaces defaults when provided. |
 | `--hierarchical-rebuild-trigger` | | `**/global.json`, `**/nuget.config`, `**/NuGet.config`, `**/NuGet.Config`, `**/.editorconfig` | Glob patterns for files that trigger a rebuild of **projects in the same folder hierarchy**. For example, changing `src/global.json` rebuilds projects under `src/` but not under `tests/`. A match at the repository root affects all projects. Repeatable. Replaces defaults when provided. |
+| `--project-bundle` | | *(none)* | Comma-separated exact project paths that must be built together as a bundle. Repeatable. Paths are relative to the repository root unless absolute. Example: `--project-bundle src/B/B.csproj,src/C/C.csproj`. |
 | `--engine` | | `MSBuild` | The analysis engine to use (see below). |
 | `--traversal-before-import` | | `<output-name>.before.proj` | Path of the import added before the `<ProjectReference>` items in the generated Traversal SDK file. |
 | `--traversal-sdk-version` | | *(none)* | Optional version appended to the Traversal SDK in generated Traversal SDK files. When set to `x.y.z`, generated files use `Sdk="Microsoft.Build.Traversal/x.y.z"`. |
@@ -120,7 +121,7 @@ This is useful for quickly checking which projects your local modifications affe
 6. **Check hierarchical-rebuild triggers** — For each changed file matching a `--hierarchical-rebuild-trigger` pattern, projects in the same folder hierarchy are marked as affected. For example, `src/nuget.config` affects projects under `src/`, while a root-level `nuget.config` affects all projects.
 7. **Analyze project graph** — Uses the selected engine to build the dependency graph and determine which files each project owns (source files, imports, `.props`, `.targets`, `.editorconfig`, `.globalconfig`, etc.).
 8. **Determine directly affected projects** — A project is directly affected if any of its owned files appears in the changed file list, or if it was flagged by a hierarchical trigger.
-9. **Find transitive dependents** — Walks up the dependency graph to include every project that directly or indirectly references an affected project.
+9. **Expand impacted projects** — Walks up the dependency graph to include transitive dependents, and applies `--project-bundle` rules so if one project in a bundle is affected, all bundle members are included too.
 10. **Write output** — Produces the filtered solution/build file containing only the affected projects.
 
 ## Output formats
