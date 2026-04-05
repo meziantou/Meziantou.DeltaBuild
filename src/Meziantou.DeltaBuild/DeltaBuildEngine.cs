@@ -392,7 +392,7 @@ internal static class DeltaBuildEngine
 
     private static (Dictionary<string, HashSet<string>> MembersByProjectPath, int BundleCount) ParseProjectBundles(
         string[] bundleDefinitions,
-        IReadOnlySet<string> inputProjectSet,
+        HashSet<string> inputProjectSet,
         FullPath repositoryPath)
     {
         var membersByProjectPath = new Dictionary<string, HashSet<string>>(StringComparer.OrdinalIgnoreCase);
