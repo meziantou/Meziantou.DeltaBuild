@@ -16,6 +16,22 @@ internal static class OutputWriter
         CancellationToken cancellationToken)
     {
         var outputPath = FullPath.FromPath(options.OutputPath);
+
+        if (options.NoOutputIfEmpty && affectedProjectPaths.Count is 0)
+        {
+            if (File.Exists(outputPath))
+            {
+                File.Delete(outputPath);
+                log.WriteLine($"No projects were affected. Deleted existing output file at {outputPath}.");
+            }
+            else
+            {
+                log.WriteLine($"No projects were affected. Skipped generating output file at {outputPath}.");
+            }
+
+            return;
+        }
+
         var extension = outputPath.Extension;
 
         if (string.Equals(extension, ".sln", StringComparison.OrdinalIgnoreCase))

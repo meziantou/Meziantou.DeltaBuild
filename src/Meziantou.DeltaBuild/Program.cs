@@ -27,6 +27,11 @@ internal static class Program
             Required = true,
         };
 
+        var noOutputIfEmptyOption = new Option<bool>("--no-output-if-empty")
+        {
+            Description = "Do not write an output file when no projects are affected. If the output file already exists, it is deleted.",
+        };
+
         var repositoryOption = new Option<string>("--repository", "-r")
         {
             Description = "Path to the git repository (default: current directory)",
@@ -102,6 +107,7 @@ internal static class Program
         {
             inputOption,
             outputOption,
+            noOutputIfEmptyOption,
             repositoryOption,
             headCommitOption,
             baseCommitOption,
@@ -123,6 +129,7 @@ internal static class Program
             {
                 InputPath = parseResult.GetValue(inputOption)!,
                 OutputPath = parseResult.GetValue(outputOption)!,
+                NoOutputIfEmpty = parseResult.GetValue(noOutputIfEmptyOption),
                 RepositoryPath = parseResult.GetValue(repositoryOption)!,
                 HeadCommit = parseResult.GetValue(headCommitOption),
                 BaseCommit = parseResult.GetValue(baseCommitOption),
