@@ -95,6 +95,7 @@ This is useful for quickly checking which projects your local modifications affe
 | `--base-branch` | | Auto-detected from GitHub Actions PR context or remote | The base branch name used for merge-base detection (e.g., `main`, `origin/main`). On GitHub Actions pull request events, defaults to `origin/$GITHUB_BASE_REF`. |
 | `--working-tree` | | `false` | Compare the base commit against the current working directory instead of a commit. Includes staged, unstaged, and untracked files. When set, `--head-commit` is ignored. |
 | `--include` | | *(all projects)* | Glob patterns to filter which projects to consider. Repeatable. Only projects matching at least one pattern are included. |
+| `--no-output-if-empty` | | `false` | Do not write an output file when no projects are affected. If the output file already exists, it is deleted. |
 | `--full-rebuild-trigger` | | *(none)* | Glob patterns for files that trigger a **full rebuild of all projects**. When any changed file matches, every project is included in the output. Repeatable. Replaces defaults when provided. |
 | `--hierarchical-rebuild-trigger` | | `**/global.json`, `**/nuget.config`, `**/NuGet.config`, `**/NuGet.Config`, `**/.editorconfig` | Glob patterns for files that trigger a rebuild of **projects in the same folder hierarchy**. For example, changing `src/global.json` rebuilds projects under `src/` but not under `tests/`. A match at the repository root affects all projects. Repeatable. Replaces defaults when provided. |
 | `--project-bundle` | | *(none)* | Comma-separated exact project paths that must be built together as a bundle. Repeatable. Paths are relative to the repository root unless absolute. Example: `--project-bundle src/B/B.csproj,src/C/C.csproj`. |
@@ -122,7 +123,7 @@ This is useful for quickly checking which projects your local modifications affe
 7. **Analyze project graph** — Uses the selected engine to build the dependency graph and determine which files each project owns (source files, imports, `.props`, `.targets`, `.editorconfig`, `.globalconfig`, etc.).
 8. **Determine directly affected projects** — A project is directly affected if any of its owned files appears in the changed file list, or if it was flagged by a hierarchical trigger.
 9. **Expand impacted projects** — Walks up the dependency graph to include transitive dependents, and applies `--project-bundle` rules so if one project in a bundle is affected, all bundle members are included too.
-10. **Write output** — Produces the filtered solution/build file containing only the affected projects.
+10. **Write output** — Produces the filtered solution/build file containing only the affected projects (or skips/deletes the output file when `--no-output-if-empty` is set and no project is affected).
 
 ## Output formats
 
