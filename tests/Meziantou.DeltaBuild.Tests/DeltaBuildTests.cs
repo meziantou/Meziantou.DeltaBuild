@@ -693,13 +693,16 @@ public sealed class DeltaBuildTests(ITestOutputHelper output) : IAsyncDisposable
         repo.CreateCommit();
 
         var outputPath = Path.Combine(repo.RepositoryPath, "output.proj");
-        await RunTool(
+        var stdout = await RunTool(
             "generate",
             "--input", Path.Combine(repo.RepositoryPath, "dirs.proj"),
             "--output", outputPath,
             "--repository", repo.RepositoryPath,
             "--base-commit", repo.Commits[^2],
             "--head-commit", repo.Commits[^1]);
+
+        Assert.Contains("No changed files detected. Skipping project graph analysis.", stdout, StringComparison.Ordinal);
+        Assert.DoesNotContain("Analyzing projects using engine:", stdout, StringComparison.Ordinal);
 
         var content = await File.ReadAllTextAsync(outputPath, TestContext.Current.CancellationToken);
         InlineSnapshot.Validate(content.Trim(), """
@@ -3151,13 +3154,16 @@ public sealed class DeltaBuildTests(ITestOutputHelper output) : IAsyncDisposable
 
         // No working tree modifications — compare HEAD against working tree
         var outputPath = Path.Combine(repo.RepositoryPath, "output.proj");
-        await RunTool(
+        var stdout = await RunTool(
             "generate",
             "--input", Path.Combine(repo.RepositoryPath, "dirs.proj"),
             "--output", outputPath,
             "--repository", repo.RepositoryPath,
             "--base-commit", repo.Commits[^1],
             "--working-tree");
+
+        Assert.Contains("No changed files detected. Skipping project graph analysis.", stdout, StringComparison.Ordinal);
+        Assert.DoesNotContain("Analyzing projects using engine:", stdout, StringComparison.Ordinal);
 
         var content = await File.ReadAllTextAsync(outputPath, TestContext.Current.CancellationToken);
         // No projects should be affected

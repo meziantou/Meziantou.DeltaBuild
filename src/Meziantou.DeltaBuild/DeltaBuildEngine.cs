@@ -102,7 +102,20 @@ internal static class DeltaBuildEngine
         }
 
         // Step 5: Skip projects whose files don't exist on disk
-        var missingProjects = projectPaths.Where(p => !File.Exists(p)).ToList();
+        var existingProjects = new List<FullPath>(projectPaths.Count);
+        var missingProjects = new List<FullPath>();
+        foreach (var projectPath in projectPaths)
+        {
+            if (File.Exists(projectPath))
+            {
+                existingProjects.Add(projectPath);
+            }
+            else
+            {
+                missingProjects.Add(projectPath);
+            }
+        }
+
         if (missingProjects.Count > 0)
         {
             foreach (var missing in missingProjects)
@@ -110,7 +123,7 @@ internal static class DeltaBuildEngine
                 log.WriteLine($"  Warning: Project file not found, skipping: {missing}");
             }
 
-            projectPaths = projectPaths.Where(p => File.Exists(p)).ToList();
+            projectPaths = existingProjects;
             log.WriteLine($"After skipping missing projects: {projectPaths.Count} project(s)");
 
             if (projectPaths.Count == 0)
@@ -119,6 +132,13 @@ internal static class DeltaBuildEngine
                 await OutputWriter.WriteAsync(options, input, [], log, cancellationToken);
                 return 0;
             }
+        }
+
+        if (changedFiles.Count == 0)
+        {
+            log.WriteLine("No changed files detected. Skipping project graph analysis.");
+            await OutputWriter.WriteAsync(options, input, [], log, cancellationToken);
+            return 0;
         }
 
         // Step 6: Check full-rebuild triggers (affects ALL projects)
@@ -181,13 +201,6 @@ internal static class DeltaBuildEngine
 
         // Step 8: Determine directly affected projects
         var normalizedChangedFiles = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        foreach (var file in changedFiles)
-        {
-            var normalizedFile = file.Replace('\\', '/');
-            var absolutePath = FullPath.Combine(repositoryPath, normalizedFile);
-            normalizedChangedFiles.Add(ProjectGraphAnalyzer.NormalizePath(absolutePath));
-        }
-
         var changedFilePathByNormalizedPath = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
         foreach (var file in changedFiles)
         {
@@ -195,21 +208,25 @@ internal static class DeltaBuildEngine
             var absolutePath = FullPath.Combine(repositoryPath, normalizedFile);
             var normalizedAbsolutePath = ProjectGraphAnalyzer.NormalizePath(absolutePath);
 
+            normalizedChangedFiles.Add(normalizedAbsolutePath);
             changedFilePathByNormalizedPath.TryAdd(normalizedAbsolutePath, normalizedFile);
         }
 
-        var changedOwnedFileCounts = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
-        foreach (var info in projectInfos.Values)
+        var owningProjectsByChangedOwnedFile = new Dictionary<string, List<string>>(StringComparer.OrdinalIgnoreCase);
+        foreach (var (projectPath, info) in projectInfos)
         {
             foreach (var ownedFile in info.OwnedFiles)
             {
                 if (!normalizedChangedFiles.Contains(ownedFile))
                     continue;
 
-                if (!changedOwnedFileCounts.TryAdd(ownedFile, 1))
+                if (!owningProjectsByChangedOwnedFile.TryGetValue(ownedFile, out var owningProjects))
                 {
-                    changedOwnedFileCounts[ownedFile]++;
+                    owningProjects = [];
+                    owningProjectsByChangedOwnedFile[ownedFile] = owningProjects;
                 }
+
+                owningProjects.Add(projectPath);
             }
         }
 
@@ -223,36 +240,30 @@ internal static class DeltaBuildEngine
             reasonByProjectPath.TryAdd(projectPath, $"hierarchical file '{triggerFile}' changed");
         }
 
-        foreach (var (projectPath, info) in projectInfos)
+        foreach (var (ownedFile, owningProjects) in owningProjectsByChangedOwnedFile)
         {
-            foreach (var ownedFile in info.OwnedFiles)
+            var changedFilePath = changedFilePathByNormalizedPath.TryGetValue(ownedFile, out var filePath)
+                ? filePath
+                : ToRepositoryRelativePath(FullPath.FromPath(ownedFile), repositoryPath);
+
+            var reason = owningProjects.Count > 1
+                ? $"global file '{changedFilePath}' changed"
+                : $"file '{changedFilePath}' changed";
+
+            foreach (var projectPath in owningProjects)
             {
-                if (normalizedChangedFiles.Contains(ownedFile))
+                directlyAffected.Add(projectPath);
+
+                if (reasonByProjectPath.TryGetValue(projectPath, out var existingReason))
                 {
-                    var changedFilePath = changedFilePathByNormalizedPath.TryGetValue(ownedFile, out var filePath)
-                        ? filePath
-                        : ToRepositoryRelativePath(FullPath.FromPath(ownedFile), repositoryPath);
-
-                    var isGlobalFile = changedOwnedFileCounts.TryGetValue(ownedFile, out var ownedFileCount) && ownedFileCount > 1;
-                    var reason = isGlobalFile
-                        ? $"global file '{changedFilePath}' changed"
-                        : $"file '{changedFilePath}' changed";
-
-                    directlyAffected.Add(projectPath);
-
-                    if (reasonByProjectPath.TryGetValue(projectPath, out var existingReason))
-                    {
-                        if (existingReason.StartsWith("hierarchical file", StringComparison.Ordinal))
-                        {
-                            reasonByProjectPath[projectPath] = reason;
-                        }
-                    }
-                    else
+                    if (existingReason.StartsWith("hierarchical file", StringComparison.Ordinal))
                     {
                         reasonByProjectPath[projectPath] = reason;
                     }
-
-                    break;
+                }
+                else
+                {
+                    reasonByProjectPath[projectPath] = reason;
                 }
             }
         }
