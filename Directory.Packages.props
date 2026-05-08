@@ -13,7 +13,7 @@
     <PackageVersion Include="Microsoft.VisualStudio.SolutionPersistence" Version="1.0.52" />
     <PackageVersion Include="Meziantou.Framework.FullPath" Version="2.0.0" />
     <PackageVersion Include="Meziantou.Framework.Globbing" Version="3.0.0" />
-    <PackageVersion Include="System.CommandLine" Version="2.0.5" />
+    <PackageVersion Include="System.CommandLine" Version="2.0.7" />
   </ItemGroup>
   <ItemGroup>
     <PackageVersion Include="Meziantou.Framework.InlineSnapshotTesting" Version="5.0.0" />
