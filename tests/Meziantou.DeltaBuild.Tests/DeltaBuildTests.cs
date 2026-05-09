@@ -1510,7 +1510,7 @@ public sealed class DeltaBuildTests(ITestOutputHelper output) : IAsyncDisposable
             ("global.json", """
                 {
                   "sdk": {
-                    "version": "10.0.100-preview.7.25380.108"
+                    "version": "10.0.203"
                   }
                 }
                 """),
@@ -1586,7 +1586,7 @@ public sealed class DeltaBuildTests(ITestOutputHelper output) : IAsyncDisposable
             ("global.json", """
                 {
                   "sdk": {
-                    "version": "10.0.100-preview.7.25380.109"
+                    "version": "10.0.203"
                   }
                 }
                 """)
