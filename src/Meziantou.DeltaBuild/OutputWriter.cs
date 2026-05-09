@@ -17,6 +17,12 @@ internal static class OutputWriter
     {
         var outputPath = FullPath.FromPath(options.OutputPath);
 
+        if (options.Shard is { } shard && options.TotalShards is { } totalShards)
+        {
+            await WriteShardAsync(options, input, affectedProjectPaths, outputPath, shard, totalShards, log, cancellationToken);
+            return;
+        }
+
         if (options.NoOutputIfEmpty && affectedProjectPaths.Count is 0)
         {
             if (File.Exists(outputPath))
@@ -32,6 +38,17 @@ internal static class OutputWriter
             return;
         }
 
+        await WriteSingleOutputAsync(options, input, affectedProjectPaths, outputPath, log, cancellationToken);
+    }
+
+    private static async Task WriteSingleOutputAsync(
+        DeltaBuildOptions options,
+        InputModel input,
+        IReadOnlyList<FullPath> affectedProjectPaths,
+        FullPath outputPath,
+        TextWriter log,
+        CancellationToken cancellationToken)
+    {
         var extension = outputPath.Extension;
 
         if (string.Equals(extension, ".sln", StringComparison.OrdinalIgnoreCase))
@@ -56,6 +73,69 @@ internal static class OutputWriter
         }
 
         log.WriteLine($"Output written to {outputPath}");
+    }
+
+    private static async Task WriteShardAsync(
+        DeltaBuildOptions options,
+        InputModel input,
+        IReadOnlyList<FullPath> affectedProjectPaths,
+        FullPath outputPath,
+        int shard,
+        int totalShards,
+        TextWriter log,
+        CancellationToken cancellationToken)
+    {
+        var orderedProjects = affectedProjectPaths
+            .OrderBy(projectPath => projectPath, FullPathComparer.Default)
+            .ToList();
+        var shardProjects = GetShardProjects(orderedProjects, shard, totalShards);
+
+        if (options.NoOutputIfEmpty && shardProjects.Count is 0)
+        {
+            if (File.Exists(outputPath))
+            {
+                File.Delete(outputPath);
+                log.WriteLine($"Shard {shard}/{totalShards} contains no projects. Deleted existing output file at {outputPath}.");
+            }
+            else
+            {
+                log.WriteLine($"Shard {shard}/{totalShards} contains no projects. Skipped generating output file at {outputPath}.");
+            }
+
+            return;
+        }
+
+        log.WriteLine($"Selected shard {shard}/{totalShards}: {shardProjects.Count} project(s) out of {orderedProjects.Count} affected project(s).");
+        await WriteSingleOutputAsync(options, input, shardProjects, outputPath, log, cancellationToken);
+    }
+
+    private static List<List<FullPath>> SplitIntoShards(List<FullPath> projects, int shardCount)
+    {
+        var result = new List<List<FullPath>>(shardCount);
+        var minimumShardSize = projects.Count / shardCount;
+        var shardCountWithExtraProject = projects.Count % shardCount;
+        var currentIndex = 0;
+
+        for (var i = 0; i < shardCount; i++)
+        {
+            var shardSize = minimumShardSize + (i < shardCountWithExtraProject ? 1 : 0);
+            var shardProjects = new List<FullPath>(shardSize);
+            for (var j = 0; j < shardSize; j++)
+            {
+                shardProjects.Add(projects[currentIndex]);
+                currentIndex++;
+            }
+
+            result.Add(shardProjects);
+        }
+
+        return result;
+    }
+
+    private static List<FullPath> GetShardProjects(List<FullPath> projects, int shard, int totalShards)
+    {
+        var shardedProjects = SplitIntoShards(projects, totalShards);
+        return shardedProjects[shard - 1];
     }
 
     private static async Task WriteSlnAsync(

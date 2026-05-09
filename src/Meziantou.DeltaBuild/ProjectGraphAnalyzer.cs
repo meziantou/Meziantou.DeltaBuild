@@ -59,9 +59,16 @@ internal static class ProjectGraphAnalyzer
             var ownedFiles = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
             var referencedProjectPaths = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
             var referencingProjectPaths = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            var isTestProject = false;
 
             foreach (var node in nodes)
             {
+                if (!isTestProject)
+                {
+                    var propertyValue = node.ProjectInstance.GetPropertyValue("IsTestProject");
+                    isTestProject = ProjectInfo.IsTruePropertyValue(propertyValue);
+                }
+
                 // Extract file items from ProjectInstance
                 try
                 {
@@ -110,6 +117,7 @@ internal static class ProjectGraphAnalyzer
                 OwnedFiles = ownedFiles,
                 ReferencedProjectPaths = referencedProjectPaths,
                 ReferencingProjectPaths = referencingProjectPaths,
+                IsTestProject = isTestProject,
             };
         }
 

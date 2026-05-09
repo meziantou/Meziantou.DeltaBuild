@@ -64,6 +64,21 @@ internal static class Program
             AllowMultipleArgumentsPerToken = true,
         };
 
+        var testProjectsOnlyOption = new Option<bool>("--test-projects-only")
+        {
+            Description = "Only include projects where the MSBuild property IsTestProject is true",
+        };
+
+        var shardOption = new Option<int?>("--shard")
+        {
+            Description = "Generate only the specified shard (1-based). Must be used with --total-shards.",
+        };
+
+        var totalShardsOption = new Option<int?>("--total-shards")
+        {
+            Description = "Total number of shards used to partition affected projects. Must be used with --shard.",
+        };
+
         var fullRebuildTriggerOption = new Option<string[]>("--full-rebuild-trigger")
         {
             Description = "Glob patterns for files that trigger a full rebuild of ALL projects (replaces defaults when provided, repeatable)",
@@ -114,6 +129,9 @@ internal static class Program
             baseBranchOption,
             workingTreeOption,
             includeOption,
+            testProjectsOnlyOption,
+            shardOption,
+            totalShardsOption,
             fullRebuildTriggerOption,
             hierarchicalRebuildTriggerOption,
             projectBundleOption,
@@ -136,6 +154,9 @@ internal static class Program
                 BaseBranch = parseResult.GetValue(baseBranchOption),
                 CompareWorkingTree = parseResult.GetValue(workingTreeOption),
                 IncludePatterns = parseResult.GetValue(includeOption) ?? [],
+                TestProjectsOnly = parseResult.GetValue(testProjectsOnlyOption),
+                Shard = parseResult.GetValue(shardOption),
+                TotalShards = parseResult.GetValue(totalShardsOption),
                 FullRebuildTriggerPatterns = parseResult.GetValue(fullRebuildTriggerOption) ?? [],
                 HierarchicalRebuildTriggerPatterns = parseResult.GetValue(hierarchicalRebuildTriggerOption) ?? [],
                 ProjectBundles = parseResult.GetValue(projectBundleOption) ?? [],
