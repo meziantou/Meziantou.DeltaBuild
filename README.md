@@ -76,6 +76,18 @@ Meziantou.DeltaBuild generate \
 
 This is useful for quickly checking which projects your local modifications affect before committing.
 
+### Shard test projects for parallel CI
+
+```bash
+Meziantou.DeltaBuild generate \
+  --input MyRepo.sln \
+  --output delta.proj \
+  --test-projects-only \
+  --shards 3
+```
+
+This writes `delta.shard-1.proj`, `delta.shard-2.proj`, and `delta.shard-3.proj`, each containing a subset of affected test projects.
+
 ## Parameters
 
 ### Required
@@ -95,6 +107,8 @@ This is useful for quickly checking which projects your local modifications affe
 | `--base-branch` | | Auto-detected from GitHub Actions PR context or remote | The base branch name used for merge-base detection (e.g., `main`, `origin/main`). On GitHub Actions pull request events, defaults to `origin/$GITHUB_BASE_REF`. |
 | `--working-tree` | | `false` | Compare the base commit against the current working directory instead of a commit. Includes staged, unstaged, and untracked files. When set, `--head-commit` is ignored. |
 | `--include` | | *(all projects)* | Glob patterns to filter which projects to consider. Repeatable. Only projects matching at least one pattern are included. |
+| `--test-projects-only` | | `false` | Only include projects where the MSBuild property `IsTestProject` is `true`. |
+| `--shards` | | *(none)* | Split output into `<count>` shard files. When set to `N`, writes `output.shard-1.<ext>` through `output.shard-N.<ext>` and does not write the base `--output` file. |
 | `--no-output-if-empty` | | `false` | Do not write an output file when no projects are affected. If the output file already exists, it is deleted. |
 | `--full-rebuild-trigger` | | *(none)* | Glob patterns for files that trigger a **full rebuild of all projects**. When any changed file matches, every project is included in the output. Repeatable. Replaces defaults when provided. |
 | `--hierarchical-rebuild-trigger` | | `**/global.json`, `**/nuget.config`, `**/NuGet.config`, `**/NuGet.Config`, `**/.editorconfig` | Glob patterns for files that trigger a rebuild of **projects in the same folder hierarchy**. For example, changing `src/global.json` rebuilds projects under `src/` but not under `tests/`. A match at the repository root affects all projects. Repeatable. Replaces defaults when provided. |
@@ -123,7 +137,8 @@ This is useful for quickly checking which projects your local modifications affe
 7. **Analyze project graph** — Uses the selected engine to build the dependency graph and determine which files each project owns (source files, imports, `.props`, `.targets`, `.editorconfig`, `.globalconfig`, etc.).
 8. **Determine directly affected projects** — A project is directly affected if any of its owned files appears in the changed file list, or if it was flagged by a hierarchical trigger.
 9. **Expand impacted projects** — Walks up the dependency graph to include transitive dependents, and applies `--project-bundle` rules so if one project in a bundle is affected, all bundle members are included too.
-10. **Write output** — Produces the filtered solution/build file containing only the affected projects (or skips/deletes the output file when `--no-output-if-empty` is set and no project is affected).
+10. **Filter test projects (optional)** — When `--test-projects-only` is set, keeps only projects with `IsTestProject=true`.
+11. **Write output** — Produces the filtered solution/build file containing only the final affected projects. When `--shards` is set, writes shard files instead of the base `--output` file. If `--no-output-if-empty` is set and no project is affected, shard files (or single output file when not sharding) are skipped/deleted.
 
 ## Output formats
 

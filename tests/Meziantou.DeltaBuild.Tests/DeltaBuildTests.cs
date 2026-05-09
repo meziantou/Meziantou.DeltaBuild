@@ -1357,6 +1357,379 @@ public sealed class DeltaBuildTests(ITestOutputHelper output) : IAsyncDisposable
     }
 
     [Fact]
+    public async Task TestProjectsOnly_OnlyIncludesProjectsWithIsTestProject()
+    {
+        var repo = await CreateRepositoryAsync();
+
+        repo.CreateCommit(
+            ("src/Lib/Lib.csproj", """
+                <Project Sdk="Microsoft.NET.Sdk">
+                  <PropertyGroup>
+                    <TargetFramework>net10.0</TargetFramework>
+                  </PropertyGroup>
+                </Project>
+                """),
+            ("src/Lib/MyClass.cs", """
+                namespace Lib;
+                public class MyClass { }
+                """),
+            ("src/App/App.csproj", """
+                <Project Sdk="Microsoft.NET.Sdk">
+                  <PropertyGroup>
+                    <TargetFramework>net10.0</TargetFramework>
+                    <OutputType>Exe</OutputType>
+                  </PropertyGroup>
+                  <ItemGroup>
+                    <ProjectReference Include="../Lib/Lib.csproj" />
+                  </ItemGroup>
+                </Project>
+                """),
+            ("src/App/Program.cs", """
+                Console.WriteLine("App");
+                """),
+            ("tests/Lib.Tests/Lib.Tests.csproj", """
+                <Project Sdk="Microsoft.NET.Sdk">
+                  <PropertyGroup>
+                    <TargetFramework>net10.0</TargetFramework>
+                    <IsTestProject>true</IsTestProject>
+                  </PropertyGroup>
+                  <ItemGroup>
+                    <ProjectReference Include="../../src/Lib/Lib.csproj" />
+                  </ItemGroup>
+                </Project>
+                """),
+            ("tests/Lib.Tests/Test1.cs", """
+                namespace Lib.Tests;
+                public class Test1 { }
+                """),
+            ("dirs.proj", """
+                <Project Sdk="Microsoft.Build.Traversal">
+                  <ItemGroup>
+                    <ProjectReference Include="src/Lib/Lib.csproj" />
+                    <ProjectReference Include="src/App/App.csproj" />
+                    <ProjectReference Include="tests/Lib.Tests/Lib.Tests.csproj" />
+                  </ItemGroup>
+                </Project>
+                """)
+        );
+
+        repo.CreateCommit(
+            ("src/Lib/MyClass.cs", """
+                namespace Lib;
+                public class MyClass { public int Value => 42; }
+                """)
+        );
+
+        var outputPath = Path.Combine(repo.RepositoryPath, "output.txt");
+        await RunTool(
+            "generate",
+            "--input", Path.Combine(repo.RepositoryPath, "dirs.proj"),
+            "--output", outputPath,
+            "--repository", repo.RepositoryPath,
+            "--base-commit", repo.Commits[^2],
+            "--head-commit", repo.Commits[^1],
+            "--test-projects-only");
+
+        var content = await File.ReadAllTextAsync(outputPath, TestContext.Current.CancellationToken);
+        InlineSnapshot.Validate(content.Trim(), """
+            tests/Lib.Tests/Lib.Tests.csproj
+            """);
+    }
+
+    [Fact]
+    public async Task FullRebuildTrigger_WithTestProjectsOnly_IncludesOnlyTestProjects()
+    {
+        var repo = await CreateRepositoryAsync();
+
+        repo.CreateCommit(
+            ("eng/build.ps1", """
+                Write-Host "build v1"
+                """),
+            ("src/App/App.csproj", """
+                <Project Sdk="Microsoft.NET.Sdk">
+                  <PropertyGroup>
+                    <TargetFramework>net10.0</TargetFramework>
+                    <OutputType>Exe</OutputType>
+                  </PropertyGroup>
+                </Project>
+                """),
+            ("src/App/Program.cs", """
+                Console.WriteLine("App");
+                """),
+            ("tests/App.Tests/App.Tests.csproj", """
+                <Project Sdk="Microsoft.NET.Sdk">
+                  <PropertyGroup>
+                    <TargetFramework>net10.0</TargetFramework>
+                    <IsTestProject>true</IsTestProject>
+                  </PropertyGroup>
+                </Project>
+                """),
+            ("tests/App.Tests/Test1.cs", """
+                namespace App.Tests;
+                public class Test1 { }
+                """),
+            ("dirs.proj", """
+                <Project Sdk="Microsoft.Build.Traversal">
+                  <ItemGroup>
+                    <ProjectReference Include="src/App/App.csproj" />
+                    <ProjectReference Include="tests/App.Tests/App.Tests.csproj" />
+                  </ItemGroup>
+                </Project>
+                """)
+        );
+
+        repo.CreateCommit(
+            ("eng/build.ps1", """
+                Write-Host "build v2"
+                """)
+        );
+
+        var outputPath = Path.Combine(repo.RepositoryPath, "output.txt");
+        await RunTool(
+            "generate",
+            "--input", Path.Combine(repo.RepositoryPath, "dirs.proj"),
+            "--output", outputPath,
+            "--repository", repo.RepositoryPath,
+            "--base-commit", repo.Commits[^2],
+            "--head-commit", repo.Commits[^1],
+            "--full-rebuild-trigger", "eng/**/*",
+            "--test-projects-only");
+
+        var content = await File.ReadAllTextAsync(outputPath, TestContext.Current.CancellationToken);
+        InlineSnapshot.Validate(content.Trim(), """
+            tests/App.Tests/App.Tests.csproj
+            """);
+    }
+
+    [Fact]
+    public async Task Shards_SplitsOutputIntoMultipleFiles()
+    {
+        var repo = await CreateRepositoryAsync();
+
+        repo.CreateCommit(
+            ("global.json", """
+                {
+                  "sdk": {
+                    "version": "10.0.100-preview.7.25380.108"
+                  }
+                }
+                """),
+            ("src/App1/App1.csproj", """
+                <Project Sdk="Microsoft.NET.Sdk">
+                  <PropertyGroup>
+                    <TargetFramework>net10.0</TargetFramework>
+                  </PropertyGroup>
+                </Project>
+                """),
+            ("src/App1/Class1.cs", """
+                namespace App1;
+                public class Class1 { }
+                """),
+            ("src/App2/App2.csproj", """
+                <Project Sdk="Microsoft.NET.Sdk">
+                  <PropertyGroup>
+                    <TargetFramework>net10.0</TargetFramework>
+                  </PropertyGroup>
+                </Project>
+                """),
+            ("src/App2/Class1.cs", """
+                namespace App2;
+                public class Class1 { }
+                """),
+            ("src/App3/App3.csproj", """
+                <Project Sdk="Microsoft.NET.Sdk">
+                  <PropertyGroup>
+                    <TargetFramework>net10.0</TargetFramework>
+                  </PropertyGroup>
+                </Project>
+                """),
+            ("src/App3/Class1.cs", """
+                namespace App3;
+                public class Class1 { }
+                """),
+            ("src/App4/App4.csproj", """
+                <Project Sdk="Microsoft.NET.Sdk">
+                  <PropertyGroup>
+                    <TargetFramework>net10.0</TargetFramework>
+                  </PropertyGroup>
+                </Project>
+                """),
+            ("src/App4/Class1.cs", """
+                namespace App4;
+                public class Class1 { }
+                """),
+            ("src/App5/App5.csproj", """
+                <Project Sdk="Microsoft.NET.Sdk">
+                  <PropertyGroup>
+                    <TargetFramework>net10.0</TargetFramework>
+                  </PropertyGroup>
+                </Project>
+                """),
+            ("src/App5/Class1.cs", """
+                namespace App5;
+                public class Class1 { }
+                """),
+            ("dirs.proj", """
+                <Project Sdk="Microsoft.Build.Traversal">
+                  <ItemGroup>
+                    <ProjectReference Include="src/App1/App1.csproj" />
+                    <ProjectReference Include="src/App2/App2.csproj" />
+                    <ProjectReference Include="src/App3/App3.csproj" />
+                    <ProjectReference Include="src/App4/App4.csproj" />
+                    <ProjectReference Include="src/App5/App5.csproj" />
+                  </ItemGroup>
+                </Project>
+                """)
+        );
+
+        repo.CreateCommit(
+            ("global.json", """
+                {
+                  "sdk": {
+                    "version": "10.0.100-preview.7.25380.109"
+                  }
+                }
+                """)
+        );
+
+        var outputPath = Path.Combine(repo.RepositoryPath, "output.txt");
+        await RunTool(
+            "generate",
+            "--input", Path.Combine(repo.RepositoryPath, "dirs.proj"),
+            "--output", outputPath,
+            "--repository", repo.RepositoryPath,
+            "--base-commit", repo.Commits[^2],
+            "--head-commit", repo.Commits[^1],
+            "--shards", "3");
+
+        Assert.False(File.Exists(outputPath));
+
+        var shard1 = await File.ReadAllTextAsync(Path.Combine(repo.RepositoryPath, "output.shard-1.txt"), TestContext.Current.CancellationToken);
+        InlineSnapshot.Validate(shard1.Trim(), """
+            src/App1/App1.csproj
+            src/App2/App2.csproj
+            """);
+
+        var shard2 = await File.ReadAllTextAsync(Path.Combine(repo.RepositoryPath, "output.shard-2.txt"), TestContext.Current.CancellationToken);
+        InlineSnapshot.Validate(shard2.Trim(), """
+            src/App3/App3.csproj
+            src/App4/App4.csproj
+            """);
+
+        var shard3 = await File.ReadAllTextAsync(Path.Combine(repo.RepositoryPath, "output.shard-3.txt"), TestContext.Current.CancellationToken);
+        InlineSnapshot.Validate(shard3.Trim(), """
+            src/App5/App5.csproj
+            """);
+    }
+
+    [Fact]
+    public async Task ShardsAndTestProjectsOnly_SplitsFilteredProjects()
+    {
+        var repo = await CreateRepositoryAsync();
+
+        repo.CreateCommit(
+            ("src/Lib/Lib.csproj", """
+                <Project Sdk="Microsoft.NET.Sdk">
+                  <PropertyGroup>
+                    <TargetFramework>net10.0</TargetFramework>
+                  </PropertyGroup>
+                </Project>
+                """),
+            ("src/Lib/Class1.cs", """
+                namespace Lib;
+                public class Class1 { }
+                """),
+            ("src/App/App.csproj", """
+                <Project Sdk="Microsoft.NET.Sdk">
+                  <PropertyGroup>
+                    <TargetFramework>net10.0</TargetFramework>
+                    <OutputType>Exe</OutputType>
+                  </PropertyGroup>
+                  <ItemGroup>
+                    <ProjectReference Include="../Lib/Lib.csproj" />
+                  </ItemGroup>
+                </Project>
+                """),
+            ("src/App/Program.cs", """
+                Console.WriteLine("App");
+                """),
+            ("tests/A.Tests/A.Tests.csproj", """
+                <Project Sdk="Microsoft.NET.Sdk">
+                  <PropertyGroup>
+                    <TargetFramework>net10.0</TargetFramework>
+                    <IsTestProject>true</IsTestProject>
+                  </PropertyGroup>
+                  <ItemGroup>
+                    <ProjectReference Include="../../src/Lib/Lib.csproj" />
+                  </ItemGroup>
+                </Project>
+                """),
+            ("tests/A.Tests/Test1.cs", """
+                namespace A.Tests;
+                public class Test1 { }
+                """),
+            ("tests/B.Tests/B.Tests.csproj", """
+                <Project Sdk="Microsoft.NET.Sdk">
+                  <PropertyGroup>
+                    <TargetFramework>net10.0</TargetFramework>
+                    <IsTestProject>true</IsTestProject>
+                  </PropertyGroup>
+                  <ItemGroup>
+                    <ProjectReference Include="../../src/Lib/Lib.csproj" />
+                  </ItemGroup>
+                </Project>
+                """),
+            ("tests/B.Tests/Test1.cs", """
+                namespace B.Tests;
+                public class Test1 { }
+                """),
+            ("dirs.proj", """
+                <Project Sdk="Microsoft.Build.Traversal">
+                  <ItemGroup>
+                    <ProjectReference Include="src/Lib/Lib.csproj" />
+                    <ProjectReference Include="src/App/App.csproj" />
+                    <ProjectReference Include="tests/A.Tests/A.Tests.csproj" />
+                    <ProjectReference Include="tests/B.Tests/B.Tests.csproj" />
+                  </ItemGroup>
+                </Project>
+                """)
+        );
+
+        repo.CreateCommit(
+            ("src/Lib/Class1.cs", """
+                namespace Lib;
+                public class Class1 { public int Value => 42; }
+                """)
+        );
+
+        var outputPath = Path.Combine(repo.RepositoryPath, "output.txt");
+        await RunTool(
+            "generate",
+            "--input", Path.Combine(repo.RepositoryPath, "dirs.proj"),
+            "--output", outputPath,
+            "--repository", repo.RepositoryPath,
+            "--base-commit", repo.Commits[^2],
+            "--head-commit", repo.Commits[^1],
+            "--test-projects-only",
+            "--shards", "3");
+
+        Assert.False(File.Exists(outputPath));
+
+        var shard1 = await File.ReadAllTextAsync(Path.Combine(repo.RepositoryPath, "output.shard-1.txt"), TestContext.Current.CancellationToken);
+        InlineSnapshot.Validate(shard1.Trim(), """
+            tests/A.Tests/A.Tests.csproj
+            """);
+
+        var shard2 = await File.ReadAllTextAsync(Path.Combine(repo.RepositoryPath, "output.shard-2.txt"), TestContext.Current.CancellationToken);
+        InlineSnapshot.Validate(shard2.Trim(), """
+            tests/B.Tests/B.Tests.csproj
+            """);
+
+        var shard3 = await File.ReadAllTextAsync(Path.Combine(repo.RepositoryPath, "output.shard-3.txt"), TestContext.Current.CancellationToken);
+        InlineSnapshot.Validate(shard3.Trim(), "");
+    }
+
+    [Fact]
     public async Task MultiTargeting_FileChangedInOneTfm_ProjectIncluded()
     {
         var repo = await CreateRepositoryAsync();

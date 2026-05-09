@@ -18,6 +18,11 @@ internal static class DeltaBuildEngine
 
     public static async Task<int> RunAsync(DeltaBuildOptions options, TextWriter log, CancellationToken cancellationToken)
     {
+        if (options.Shards is <= 0)
+        {
+            throw new InvalidOperationException("The --shards value must be greater than 0.");
+        }
+
         var repositoryPath = FullPath.FromPath(options.RepositoryPath);
 
         var isWorkingTree = options.CompareWorkingTree;
@@ -147,19 +152,22 @@ internal static class DeltaBuildEngine
             : DefaultFullRebuildTriggerPatterns;
 
         var fullRebuildTriggerFiles = GetMatchingTriggerFiles(changedFiles, fullTriggerPatterns);
-        if (fullRebuildTriggerFiles.Count > 0)
+        var fullRebuildTriggerFile = fullRebuildTriggerFiles.Count > 0 ? fullRebuildTriggerFiles[0] : null;
+        if (fullRebuildTriggerFile is not null)
         {
-            var globalTriggerFile = fullRebuildTriggerFiles[0];
-            log.WriteLine($"Full rebuild triggered by global file '{globalTriggerFile}'.");
+            log.WriteLine($"Full rebuild triggered by global file '{fullRebuildTriggerFile}'.");
 
-            foreach (var projectPath in projectPaths.OrderBy(p => p, FullPathComparer.Default))
+            if (!options.TestProjectsOnly)
             {
-                var projectDisplayPath = ToRepositoryRelativePath(projectPath, repositoryPath);
-                log.WriteLine($"  Adding project '{projectDisplayPath}' because global file '{globalTriggerFile}' changed.");
-            }
+                foreach (var projectPath in projectPaths.OrderBy(p => p, FullPathComparer.Default))
+                {
+                    var projectDisplayPath = ToRepositoryRelativePath(projectPath, repositoryPath);
+                    log.WriteLine($"  Adding project '{projectDisplayPath}' because global file '{fullRebuildTriggerFile}' changed.");
+                }
 
-            await OutputWriter.WriteAsync(options, input, projectPaths, log, cancellationToken);
-            return 0;
+                await OutputWriter.WriteAsync(options, input, projectPaths, log, cancellationToken);
+                return 0;
+            }
         }
 
         // Step 6b: Check hierarchical-rebuild triggers (affects only projects in the same folder hierarchy)
@@ -178,6 +186,24 @@ internal static class DeltaBuildEngine
             AnalysisEngine.RoslynWorkspace => await WorkspaceProjectAnalyzer.AnalyzeAsync(projectPaths, log, cancellationToken),
             _ => ProjectGraphAnalyzer.Analyze(projectPaths, log),
         };
+
+        if (fullRebuildTriggerFile is not null)
+        {
+            var fullRebuildAffectedProjects = projectPaths
+                .OrderBy(p => p, FullPathComparer.Default)
+                .ToList();
+
+            fullRebuildAffectedProjects = FilterToTestProjects(fullRebuildAffectedProjects, projectInfos, log);
+
+            foreach (var projectPath in fullRebuildAffectedProjects)
+            {
+                var projectDisplayPath = ToRepositoryRelativePath(projectPath, repositoryPath);
+                log.WriteLine($"  Adding project '{projectDisplayPath}' because global file '{fullRebuildTriggerFile}' changed.");
+            }
+
+            await OutputWriter.WriteAsync(options, input, fullRebuildAffectedProjects, log, cancellationToken);
+            return 0;
+        }
 
         // For SingleProject input, include all projects discovered by the graph as candidates.
         // For other formats (Traversal, SLN, SLNX), only the explicitly listed input projects are candidates.
@@ -328,6 +354,11 @@ internal static class DeltaBuildEngine
 
         log.WriteLine($"Total affected (including transitive dependents): {affectedInputProjects.Count} project(s)");
 
+        if (options.TestProjectsOnly)
+        {
+            affectedInputProjects = FilterToTestProjects(affectedInputProjects, projectInfos, log);
+        }
+
         foreach (var project in affectedInputProjects)
         {
             var normalizedProjectPath = ProjectGraphAnalyzer.NormalizePath(project);
@@ -347,6 +378,26 @@ internal static class DeltaBuildEngine
         await OutputWriter.WriteAsync(options, input, affectedInputProjects, log, cancellationToken);
 
         return 0;
+    }
+
+    private static List<FullPath> FilterToTestProjects(
+        List<FullPath> projectPaths,
+        Dictionary<string, ProjectInfo> projectInfos,
+        TextWriter log)
+    {
+        var result = new List<FullPath>(projectPaths.Count);
+        foreach (var projectPath in projectPaths)
+        {
+            var normalizedProjectPath = ProjectGraphAnalyzer.NormalizePath(projectPath);
+            if (projectInfos.TryGetValue(normalizedProjectPath, out var projectInfo) &&
+                projectInfo.IsTestProject)
+            {
+                result.Add(projectPath);
+            }
+        }
+
+        log.WriteLine($"After --test-projects-only filter: {result.Count} project(s)");
+        return result;
     }
 
     private static string? TryGetGitHubActionsPullRequestBaseBranch()

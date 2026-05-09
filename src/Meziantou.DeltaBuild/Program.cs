@@ -64,6 +64,16 @@ internal static class Program
             AllowMultipleArgumentsPerToken = true,
         };
 
+        var testProjectsOnlyOption = new Option<bool>("--test-projects-only")
+        {
+            Description = "Only include projects where the MSBuild property IsTestProject is true",
+        };
+
+        var shardsOption = new Option<int?>("--shards")
+        {
+            Description = "Split the output into the specified number of shard files. When set, only shard files are written.",
+        };
+
         var fullRebuildTriggerOption = new Option<string[]>("--full-rebuild-trigger")
         {
             Description = "Glob patterns for files that trigger a full rebuild of ALL projects (replaces defaults when provided, repeatable)",
@@ -114,6 +124,8 @@ internal static class Program
             baseBranchOption,
             workingTreeOption,
             includeOption,
+            testProjectsOnlyOption,
+            shardsOption,
             fullRebuildTriggerOption,
             hierarchicalRebuildTriggerOption,
             projectBundleOption,
@@ -136,6 +148,8 @@ internal static class Program
                 BaseBranch = parseResult.GetValue(baseBranchOption),
                 CompareWorkingTree = parseResult.GetValue(workingTreeOption),
                 IncludePatterns = parseResult.GetValue(includeOption) ?? [],
+                TestProjectsOnly = parseResult.GetValue(testProjectsOnlyOption),
+                Shards = parseResult.GetValue(shardsOption),
                 FullRebuildTriggerPatterns = parseResult.GetValue(fullRebuildTriggerOption) ?? [],
                 HierarchicalRebuildTriggerPatterns = parseResult.GetValue(hierarchicalRebuildTriggerOption) ?? [],
                 ProjectBundles = parseResult.GetValue(projectBundleOption) ?? [],

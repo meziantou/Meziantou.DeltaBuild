@@ -97,6 +97,7 @@ internal static class WorkspaceProjectAnalyzer
             var ownedFiles = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
             var referencedProjectPaths = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
             var referencingProjectPaths = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            var isTestProject = false;
 
             // Include the project file itself
             ownedFiles.Add(projectPath);
@@ -156,6 +157,7 @@ internal static class WorkspaceProjectAnalyzer
             try
             {
                 var projectInstance = new ProjectInstance(projectPath);
+                isTestProject = ProjectInfo.IsTruePropertyValue(projectInstance.GetPropertyValue("IsTestProject"));
                 foreach (var importPath in projectInstance.ImportPaths)
                 {
                     ownedFiles.Add(NormalizePath(importPath));
@@ -185,6 +187,7 @@ internal static class WorkspaceProjectAnalyzer
                 OwnedFiles = ownedFiles,
                 ReferencedProjectPaths = referencedProjectPaths,
                 ReferencingProjectPaths = referencingProjectPaths,
+                IsTestProject = isTestProject,
             };
         }
 
