@@ -69,9 +69,14 @@ internal static class Program
             Description = "Only include projects where the MSBuild property IsTestProject is true",
         };
 
-        var shardsOption = new Option<int?>("--shards")
+        var shardOption = new Option<int?>("--shard")
         {
-            Description = "Split the output into the specified number of shard files. When set, only shard files are written.",
+            Description = "Generate only the specified shard (1-based). Must be used with --total-shards.",
+        };
+
+        var totalShardsOption = new Option<int?>("--total-shards")
+        {
+            Description = "Total number of shards used to partition affected projects. Must be used with --shard.",
         };
 
         var fullRebuildTriggerOption = new Option<string[]>("--full-rebuild-trigger")
@@ -125,7 +130,8 @@ internal static class Program
             workingTreeOption,
             includeOption,
             testProjectsOnlyOption,
-            shardsOption,
+            shardOption,
+            totalShardsOption,
             fullRebuildTriggerOption,
             hierarchicalRebuildTriggerOption,
             projectBundleOption,
@@ -149,7 +155,8 @@ internal static class Program
                 CompareWorkingTree = parseResult.GetValue(workingTreeOption),
                 IncludePatterns = parseResult.GetValue(includeOption) ?? [],
                 TestProjectsOnly = parseResult.GetValue(testProjectsOnlyOption),
-                Shards = parseResult.GetValue(shardsOption),
+                Shard = parseResult.GetValue(shardOption),
+                TotalShards = parseResult.GetValue(totalShardsOption),
                 FullRebuildTriggerPatterns = parseResult.GetValue(fullRebuildTriggerOption) ?? [],
                 HierarchicalRebuildTriggerPatterns = parseResult.GetValue(hierarchicalRebuildTriggerOption) ?? [],
                 ProjectBundles = parseResult.GetValue(projectBundleOption) ?? [],

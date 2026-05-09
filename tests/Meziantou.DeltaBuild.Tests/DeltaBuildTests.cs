@@ -1502,7 +1502,7 @@ public sealed class DeltaBuildTests(ITestOutputHelper output) : IAsyncDisposable
     }
 
     [Fact]
-    public async Task Shards_SplitsOutputIntoMultipleFiles()
+    public async Task ShardAndTotalShards_WritesOnlyRequestedShard()
     {
         var repo = await CreateRepositoryAsync();
 
@@ -1586,7 +1586,7 @@ public sealed class DeltaBuildTests(ITestOutputHelper output) : IAsyncDisposable
             ("global.json", """
                 {
                   "sdk": {
-                    "version": "10.0.203"
+                    "version": "10.0.204"
                   }
                 }
                 """)
@@ -1600,30 +1600,22 @@ public sealed class DeltaBuildTests(ITestOutputHelper output) : IAsyncDisposable
             "--repository", repo.RepositoryPath,
             "--base-commit", repo.Commits[^2],
             "--head-commit", repo.Commits[^1],
-            "--shards", "3");
+            "--shard", "2",
+            "--total-shards", "3");
 
-        Assert.False(File.Exists(outputPath));
-
-        var shard1 = await File.ReadAllTextAsync(Path.Combine(repo.RepositoryPath, "output.shard-1.txt"), TestContext.Current.CancellationToken);
-        InlineSnapshot.Validate(shard1.Trim(), """
-            src/App1/App1.csproj
-            src/App2/App2.csproj
-            """);
-
-        var shard2 = await File.ReadAllTextAsync(Path.Combine(repo.RepositoryPath, "output.shard-2.txt"), TestContext.Current.CancellationToken);
-        InlineSnapshot.Validate(shard2.Trim(), """
+        var content = await File.ReadAllTextAsync(outputPath, TestContext.Current.CancellationToken);
+        InlineSnapshot.Validate(content.Trim(), """
             src/App3/App3.csproj
             src/App4/App4.csproj
             """);
 
-        var shard3 = await File.ReadAllTextAsync(Path.Combine(repo.RepositoryPath, "output.shard-3.txt"), TestContext.Current.CancellationToken);
-        InlineSnapshot.Validate(shard3.Trim(), """
-            src/App5/App5.csproj
-            """);
+        Assert.False(File.Exists(Path.Combine(repo.RepositoryPath, "output.shard-1.txt")));
+        Assert.False(File.Exists(Path.Combine(repo.RepositoryPath, "output.shard-2.txt")));
+        Assert.False(File.Exists(Path.Combine(repo.RepositoryPath, "output.shard-3.txt")));
     }
 
     [Fact]
-    public async Task ShardsAndTestProjectsOnly_SplitsFilteredProjects()
+    public async Task ShardAndTotalShards_WithTestProjectsOnly_WritesRequestedShard()
     {
         var repo = await CreateRepositoryAsync();
 
@@ -1711,22 +1703,90 @@ public sealed class DeltaBuildTests(ITestOutputHelper output) : IAsyncDisposable
             "--base-commit", repo.Commits[^2],
             "--head-commit", repo.Commits[^1],
             "--test-projects-only",
-            "--shards", "3");
+            "--shard", "1",
+            "--total-shards", "3");
 
-        Assert.False(File.Exists(outputPath));
-
-        var shard1 = await File.ReadAllTextAsync(Path.Combine(repo.RepositoryPath, "output.shard-1.txt"), TestContext.Current.CancellationToken);
-        InlineSnapshot.Validate(shard1.Trim(), """
+        var content = await File.ReadAllTextAsync(outputPath, TestContext.Current.CancellationToken);
+        InlineSnapshot.Validate(content.Trim(), """
             tests/A.Tests/A.Tests.csproj
             """);
 
-        var shard2 = await File.ReadAllTextAsync(Path.Combine(repo.RepositoryPath, "output.shard-2.txt"), TestContext.Current.CancellationToken);
-        InlineSnapshot.Validate(shard2.Trim(), """
-            tests/B.Tests/B.Tests.csproj
-            """);
+        Assert.False(File.Exists(Path.Combine(repo.RepositoryPath, "output.shard-1.txt")));
+        Assert.False(File.Exists(Path.Combine(repo.RepositoryPath, "output.shard-2.txt")));
+        Assert.False(File.Exists(Path.Combine(repo.RepositoryPath, "output.shard-3.txt")));
+    }
 
-        var shard3 = await File.ReadAllTextAsync(Path.Combine(repo.RepositoryPath, "output.shard-3.txt"), TestContext.Current.CancellationToken);
-        InlineSnapshot.Validate(shard3.Trim(), "");
+    [Fact]
+    public async Task ShardOptionWithoutTotalShards_FailsWithClearError()
+    {
+        var result = await ToolRunner.RunToolRawAsync(
+            output,
+            "generate",
+            "--input", "input.proj",
+            "--output", "output.txt",
+            "--shard", "1");
+
+        Assert.NotEqual(0, result.ExitCode);
+        Assert.Contains("must be used with --total-shards", result.Stderr + result.Stdout, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task TotalShardsOptionWithoutShard_FailsWithClearError()
+    {
+        var result = await ToolRunner.RunToolRawAsync(
+            output,
+            "generate",
+            "--input", "input.proj",
+            "--output", "output.txt",
+            "--total-shards", "3");
+
+        Assert.NotEqual(0, result.ExitCode);
+        Assert.Contains("must be used with --shard", result.Stderr + result.Stdout, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task ShardOption_Zero_FailsWithClearError()
+    {
+        var result = await ToolRunner.RunToolRawAsync(
+            output,
+            "generate",
+            "--input", "input.proj",
+            "--output", "output.txt",
+            "--shard", "0",
+            "--total-shards", "3");
+
+        Assert.NotEqual(0, result.ExitCode);
+        Assert.Contains("must be greater than 0", result.Stderr + result.Stdout, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task TotalShardsOption_Zero_FailsWithClearError()
+    {
+        var result = await ToolRunner.RunToolRawAsync(
+            output,
+            "generate",
+            "--input", "input.proj",
+            "--output", "output.txt",
+            "--shard", "1",
+            "--total-shards", "0");
+
+        Assert.NotEqual(0, result.ExitCode);
+        Assert.Contains("must be greater than 0", result.Stderr + result.Stdout, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task ShardOption_GreaterThanTotalShards_FailsWithClearError()
+    {
+        var result = await ToolRunner.RunToolRawAsync(
+            output,
+            "generate",
+            "--input", "input.proj",
+            "--output", "output.txt",
+            "--shard", "4",
+            "--total-shards", "3");
+
+        Assert.NotEqual(0, result.ExitCode);
+        Assert.Contains("must be less than or equal to --total-shards", result.Stderr + result.Stdout, StringComparison.Ordinal);
     }
 
     [Fact]

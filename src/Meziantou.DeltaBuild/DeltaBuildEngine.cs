@@ -18,10 +18,7 @@ internal static class DeltaBuildEngine
 
     public static async Task<int> RunAsync(DeltaBuildOptions options, TextWriter log, CancellationToken cancellationToken)
     {
-        if (options.Shards is <= 0)
-        {
-            throw new InvalidOperationException("The --shards value must be greater than 0.");
-        }
+        ValidateShardOptions(options);
 
         var repositoryPath = FullPath.FromPath(options.RepositoryPath);
 
@@ -378,6 +375,36 @@ internal static class DeltaBuildEngine
         await OutputWriter.WriteAsync(options, input, affectedInputProjects, log, cancellationToken);
 
         return 0;
+    }
+
+    private static void ValidateShardOptions(DeltaBuildOptions options)
+    {
+        if (options.Shard is { } shard && shard <= 0)
+        {
+            throw new InvalidOperationException("The --shard value must be greater than 0.");
+        }
+
+        if (options.TotalShards is { } totalShards && totalShards <= 0)
+        {
+            throw new InvalidOperationException("The --total-shards value must be greater than 0.");
+        }
+
+        if (options.Shard is null && options.TotalShards is not null)
+        {
+            throw new InvalidOperationException("The --total-shards option must be used with --shard.");
+        }
+
+        if (options.Shard is not null && options.TotalShards is null)
+        {
+            throw new InvalidOperationException("The --shard option must be used with --total-shards.");
+        }
+
+        if (options.Shard is { } currentShard &&
+            options.TotalShards is { } configuredTotalShards &&
+            currentShard > configuredTotalShards)
+        {
+            throw new InvalidOperationException("The --shard value must be less than or equal to --total-shards.");
+        }
     }
 
     private static List<FullPath> FilterToTestProjects(
