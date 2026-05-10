@@ -405,6 +405,12 @@ internal static class DeltaBuildEngine
         {
             throw new InvalidOperationException("The --shard value must be less than or equal to --total-shards.");
         }
+
+        if (options.ShardSeparateProjects.Length > 0 &&
+            (options.Shard is null || options.TotalShards is null))
+        {
+            throw new InvalidOperationException("The --shard-separate option must be used with --shard and --total-shards.");
+        }
     }
 
     private static List<FullPath> FilterToTestProjects(

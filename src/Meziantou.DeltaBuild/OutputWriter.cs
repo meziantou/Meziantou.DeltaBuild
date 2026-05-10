@@ -88,7 +88,13 @@ internal static class OutputWriter
         var orderedProjects = affectedProjectPaths
             .OrderBy(projectPath => projectPath, FullPathComparer.Default)
             .ToList();
-        var shardProjects = GetShardProjects(orderedProjects, shard, totalShards);
+        var repositoryPath = FullPath.FromPath(options.RepositoryPath);
+        var shardProjects = GetShardProjects(
+            orderedProjects,
+            shard,
+            totalShards,
+            options.ShardSeparateProjects,
+            repositoryPath);
 
         if (options.NoOutputIfEmpty && shardProjects.Count is 0)
         {
@@ -132,10 +138,99 @@ internal static class OutputWriter
         return result;
     }
 
-    private static List<FullPath> GetShardProjects(List<FullPath> projects, int shard, int totalShards)
+    private static List<FullPath> GetShardProjects(
+        List<FullPath> projects,
+        int shard,
+        int totalShards,
+        string[] shardSeparateProjects,
+        FullPath repositoryPath)
     {
-        var shardedProjects = SplitIntoShards(projects, totalShards);
-        return shardedProjects[shard - 1];
+        if (shardSeparateProjects.Length == 0)
+        {
+            var shardedProjects = SplitIntoShards(projects, totalShards);
+            return shardedProjects[shard - 1];
+        }
+
+        var separatedProjectsByPath = ParseShardSeparateProjectPaths(shardSeparateProjects, repositoryPath);
+        var projectsByPath = projects.ToDictionary(
+            path => ProjectGraphAnalyzer.NormalizePath(path),
+            path => path,
+            StringComparer.OrdinalIgnoreCase);
+        var selectedProjectsByPath = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var shardAssignments = new List<List<FullPath>>(totalShards);
+
+        for (var i = 0; i < totalShards; i++)
+        {
+            shardAssignments.Add([]);
+        }
+
+        var selectedProjectIndex = 0;
+        foreach (var separatedProjectPath in separatedProjectsByPath)
+        {
+            if (!projectsByPath.TryGetValue(separatedProjectPath, out var projectPath))
+            {
+                continue;
+            }
+
+            if (!selectedProjectsByPath.Add(separatedProjectPath))
+            {
+                continue;
+            }
+
+            shardAssignments[selectedProjectIndex % totalShards].Add(projectPath);
+            selectedProjectIndex++;
+        }
+
+        var remainingProjects = new List<FullPath>(projects.Count - selectedProjectsByPath.Count);
+        foreach (var projectPath in projects)
+        {
+            var normalizedProjectPath = ProjectGraphAnalyzer.NormalizePath(projectPath);
+            if (!selectedProjectsByPath.Contains(normalizedProjectPath))
+            {
+                remainingProjects.Add(projectPath);
+            }
+        }
+
+        var remainingAssignments = SplitIntoShards(remainingProjects, totalShards);
+        for (var i = 0; i < totalShards; i++)
+        {
+            shardAssignments[i].AddRange(remainingAssignments[i]);
+        }
+
+        return shardAssignments[shard - 1];
+    }
+
+    private static string[] ParseShardSeparateProjectPaths(string[] projectPaths, FullPath repositoryPath)
+    {
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var result = new List<string>(projectPaths.Length);
+        foreach (var projectPath in projectPaths)
+        {
+            if (string.IsNullOrWhiteSpace(projectPath))
+            {
+                throw new InvalidOperationException("The --shard-separate option cannot contain an empty project path.");
+            }
+
+            var trimmedProjectPath = projectPath.Trim();
+            FullPath absolutePath;
+            if (Path.IsPathRooted(trimmedProjectPath))
+            {
+                absolutePath = FullPath.FromPath(trimmedProjectPath);
+            }
+            else
+            {
+                var normalizedPath = trimmedProjectPath.Replace('\\', '/');
+                absolutePath = FullPath.Combine(repositoryPath, normalizedPath);
+            }
+
+            var normalizedAbsolutePath = ProjectGraphAnalyzer.NormalizePath(absolutePath);
+            if (seen.Add(normalizedAbsolutePath))
+            {
+                result.Add(normalizedAbsolutePath);
+            }
+        }
+
+        return [.. result];
     }
 
     private static async Task WriteSlnAsync(
