@@ -84,10 +84,13 @@ Meziantou.DeltaBuild generate \
   --output delta.proj \
   --test-projects-only \
   --shard 1 \
-  --total-shards 3
+  --total-shards 3 \
+  --shard-separate tests/Smoke/Smoke.Tests.csproj \
+  --shard-separate tests/Integration/Integration.Tests.csproj
 ```
 
 This writes one file (`delta.proj`) containing only the selected shard (1-based index) of affected test projects.
+When `--shard-separate` is used, listed projects are spread across shards in declaration order (round-robin), so they are separated when possible.
 
 ## Parameters
 
@@ -111,6 +114,7 @@ This writes one file (`delta.proj`) containing only the selected shard (1-based 
 | `--test-projects-only` | | `false` | Only include projects where the MSBuild property `IsTestProject` is `true`. |
 | `--shard` | | *(none)* | Generate only shard number `N` (1-based). Must be used with `--total-shards`. |
 | `--total-shards` | | *(none)* | Total number of shards used to partition affected projects. Must be used with `--shard`. |
+| `--shard-separate` | | *(none)* | Project paths to spread across different shards in declaration order (repeatable). Must be used with `--shard` and `--total-shards`. Paths are relative to the repository root unless absolute. |
 | `--no-output-if-empty` | | `false` | Do not write an output file when no projects are affected. If the output file already exists, it is deleted. |
 | `--full-rebuild-trigger` | | *(none)* | Glob patterns for files that trigger a **full rebuild of all projects**. When any changed file matches, every project is included in the output. Repeatable. Replaces defaults when provided. |
 | `--hierarchical-rebuild-trigger` | | `**/global.json`, `**/nuget.config`, `**/NuGet.config`, `**/NuGet.Config`, `**/.editorconfig` | Glob patterns for files that trigger a rebuild of **projects in the same folder hierarchy**. For example, changing `src/global.json` rebuilds projects under `src/` but not under `tests/`. A match at the repository root affects all projects. Repeatable. Replaces defaults when provided. |

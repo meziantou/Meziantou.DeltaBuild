@@ -79,6 +79,12 @@ internal static class Program
             Description = "Total number of shards used to partition affected projects. Must be used with --shard.",
         };
 
+        var shardSeparateOption = new Option<string[]>("--shard-separate")
+        {
+            Description = "Project paths that should be spread across different shards in declaration order (repeatable). Paths are relative to the repository root unless absolute.",
+            AllowMultipleArgumentsPerToken = true,
+        };
+
         var fullRebuildTriggerOption = new Option<string[]>("--full-rebuild-trigger")
         {
             Description = "Glob patterns for files that trigger a full rebuild of ALL projects (replaces defaults when provided, repeatable)",
@@ -132,6 +138,7 @@ internal static class Program
             testProjectsOnlyOption,
             shardOption,
             totalShardsOption,
+            shardSeparateOption,
             fullRebuildTriggerOption,
             hierarchicalRebuildTriggerOption,
             projectBundleOption,
@@ -157,6 +164,7 @@ internal static class Program
                 TestProjectsOnly = parseResult.GetValue(testProjectsOnlyOption),
                 Shard = parseResult.GetValue(shardOption),
                 TotalShards = parseResult.GetValue(totalShardsOption),
+                ShardSeparateProjects = parseResult.GetValue(shardSeparateOption) ?? [],
                 FullRebuildTriggerPatterns = parseResult.GetValue(fullRebuildTriggerOption) ?? [],
                 HierarchicalRebuildTriggerPatterns = parseResult.GetValue(hierarchicalRebuildTriggerOption) ?? [],
                 ProjectBundles = parseResult.GetValue(projectBundleOption) ?? [],

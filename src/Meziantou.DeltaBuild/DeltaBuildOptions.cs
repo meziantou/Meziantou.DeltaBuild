@@ -14,6 +14,7 @@ internal sealed class DeltaBuildOptions
     public bool TestProjectsOnly { get; init; }
     public int? Shard { get; init; }
     public int? TotalShards { get; init; }
+    public string[] ShardSeparateProjects { get; init; } = [];
     public string[] FullRebuildTriggerPatterns { get; init; } = [];
     public string[] HierarchicalRebuildTriggerPatterns { get; init; } = [];
     public string[] ProjectBundles { get; init; } = [];

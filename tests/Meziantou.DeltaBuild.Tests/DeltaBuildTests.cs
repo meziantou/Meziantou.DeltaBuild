@@ -1615,6 +1615,136 @@ public sealed class DeltaBuildTests(ITestOutputHelper output) : IAsyncDisposable
     }
 
     [Fact]
+    public async Task ShardSeparate_WithMoreProjectsThanShards_DistributesInDeclarationOrder()
+    {
+        var repo = await CreateRepositoryAsync();
+
+        repo.CreateCommit(
+            ("src/App1/App1.csproj", """
+                <Project Sdk="Microsoft.NET.Sdk">
+                  <PropertyGroup>
+                    <TargetFramework>net10.0</TargetFramework>
+                  </PropertyGroup>
+                </Project>
+                """),
+            ("src/App1/Class1.cs", """
+                namespace App1;
+                public class Class1 { }
+                """),
+            ("src/App2/App2.csproj", """
+                <Project Sdk="Microsoft.NET.Sdk">
+                  <PropertyGroup>
+                    <TargetFramework>net10.0</TargetFramework>
+                  </PropertyGroup>
+                </Project>
+                """),
+            ("src/App2/Class1.cs", """
+                namespace App2;
+                public class Class1 { }
+                """),
+            ("src/App3/App3.csproj", """
+                <Project Sdk="Microsoft.NET.Sdk">
+                  <PropertyGroup>
+                    <TargetFramework>net10.0</TargetFramework>
+                  </PropertyGroup>
+                </Project>
+                """),
+            ("src/App3/Class1.cs", """
+                namespace App3;
+                public class Class1 { }
+                """),
+            ("src/App4/App4.csproj", """
+                <Project Sdk="Microsoft.NET.Sdk">
+                  <PropertyGroup>
+                    <TargetFramework>net10.0</TargetFramework>
+                  </PropertyGroup>
+                </Project>
+                """),
+            ("src/App4/Class1.cs", """
+                namespace App4;
+                public class Class1 { }
+                """),
+            ("src/App5/App5.csproj", """
+                <Project Sdk="Microsoft.NET.Sdk">
+                  <PropertyGroup>
+                    <TargetFramework>net10.0</TargetFramework>
+                  </PropertyGroup>
+                </Project>
+                """),
+            ("src/App5/Class1.cs", """
+                namespace App5;
+                public class Class1 { }
+                """),
+            ("dirs.proj", """
+                <Project Sdk="Microsoft.Build.Traversal">
+                  <ItemGroup>
+                    <ProjectReference Include="src/App1/App1.csproj" />
+                    <ProjectReference Include="src/App2/App2.csproj" />
+                    <ProjectReference Include="src/App3/App3.csproj" />
+                    <ProjectReference Include="src/App4/App4.csproj" />
+                    <ProjectReference Include="src/App5/App5.csproj" />
+                  </ItemGroup>
+                </Project>
+                """)
+        );
+
+        repo.CreateCommit(
+            ("global.json", """
+                {
+                  "sdk": {
+                    "version": "10.0.204"
+                  }
+                }
+                """)
+        );
+
+        var shard1OutputPath = Path.Combine(repo.RepositoryPath, "output.shard-1.txt");
+        await RunTool(
+            "generate",
+            "--input", Path.Combine(repo.RepositoryPath, "dirs.proj"),
+            "--output", shard1OutputPath,
+            "--repository", repo.RepositoryPath,
+            "--base-commit", repo.Commits[^2],
+            "--head-commit", repo.Commits[^1],
+            "--shard", "1",
+            "--total-shards", "2",
+            "--shard-separate", "src/App5/App5.csproj",
+            "--shard-separate", "src/App1/App1.csproj",
+            "--shard-separate", "src/App4/App4.csproj",
+            "--shard-separate", "src/App2/App2.csproj",
+            "--shard-separate", "src/App3/App3.csproj");
+
+        var shard1Content = await File.ReadAllTextAsync(shard1OutputPath, TestContext.Current.CancellationToken);
+        InlineSnapshot.Validate(shard1Content.Trim(), """
+            src/App3/App3.csproj
+            src/App4/App4.csproj
+            src/App5/App5.csproj
+            """);
+
+        var shard2OutputPath = Path.Combine(repo.RepositoryPath, "output.shard-2.txt");
+        await RunTool(
+            "generate",
+            "--input", Path.Combine(repo.RepositoryPath, "dirs.proj"),
+            "--output", shard2OutputPath,
+            "--repository", repo.RepositoryPath,
+            "--base-commit", repo.Commits[^2],
+            "--head-commit", repo.Commits[^1],
+            "--shard", "2",
+            "--total-shards", "2",
+            "--shard-separate", "src/App5/App5.csproj",
+            "--shard-separate", "src/App1/App1.csproj",
+            "--shard-separate", "src/App4/App4.csproj",
+            "--shard-separate", "src/App2/App2.csproj",
+            "--shard-separate", "src/App3/App3.csproj");
+
+        var shard2Content = await File.ReadAllTextAsync(shard2OutputPath, TestContext.Current.CancellationToken);
+        InlineSnapshot.Validate(shard2Content.Trim(), """
+            src/App1/App1.csproj
+            src/App2/App2.csproj
+            """);
+    }
+
+    [Fact]
     public async Task ShardAndTotalShards_WithTestProjectsOnly_WritesRequestedShard()
     {
         var repo = await CreateRepositoryAsync();
@@ -1728,6 +1858,20 @@ public sealed class DeltaBuildTests(ITestOutputHelper output) : IAsyncDisposable
 
         Assert.NotEqual(0, result.ExitCode);
         Assert.Contains("must be used with --total-shards", result.Stderr + result.Stdout, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task ShardSeparateOptionWithoutShardAndTotalShards_FailsWithClearError()
+    {
+        var result = await ToolRunner.RunToolRawAsync(
+            output,
+            "generate",
+            "--input", "input.proj",
+            "--output", "output.txt",
+            "--shard-separate", "tests/Proj/Proj.csproj");
+
+        Assert.NotEqual(0, result.ExitCode);
+        Assert.Contains("must be used with --shard and --total-shards", result.Stderr + result.Stdout, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -2650,7 +2794,7 @@ public sealed class DeltaBuildTests(ITestOutputHelper output) : IAsyncDisposable
                     "rollForward": "latestMajor"
                   },
                   "msbuild-sdks": {
-                    "Meziantou.NET.Sdk": "1.0.73",
+                    "Meziantou.NET.Sdk": "1.0.94",
                     "Microsoft.Build.Traversal": "4.1.82"
                   }
                 }
@@ -2722,7 +2866,7 @@ public sealed class DeltaBuildTests(ITestOutputHelper output) : IAsyncDisposable
                     "rollForward": "latestMajor"
                   },
                   "msbuild-sdks": {
-                    "Meziantou.NET.Sdk": "1.0.73",
+                    "Meziantou.NET.Sdk": "1.0.94",
                     "Microsoft.Build.Traversal": "4.1.82"
                   }
                 }
@@ -2806,7 +2950,7 @@ public sealed class DeltaBuildTests(ITestOutputHelper output) : IAsyncDisposable
                     "rollForward": "latestMajor"
                   },
                   "msbuild-sdks": {
-                    "Meziantou.NET.Sdk": "1.0.73",
+                    "Meziantou.NET.Sdk": "1.0.94",
                     "Microsoft.Build.Traversal": "4.1.82"
                   }
                 }
