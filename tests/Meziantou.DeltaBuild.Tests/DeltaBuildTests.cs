@@ -2794,7 +2794,7 @@ public sealed class DeltaBuildTests(ITestOutputHelper output) : IAsyncDisposable
                     "rollForward": "latestMajor"
                   },
                   "msbuild-sdks": {
-                    "Meziantou.NET.Sdk": "1.0.73",
+                    "Meziantou.NET.Sdk": "1.0.94",
                     "Microsoft.Build.Traversal": "4.1.82"
                   }
                 }
@@ -2866,7 +2866,7 @@ public sealed class DeltaBuildTests(ITestOutputHelper output) : IAsyncDisposable
                     "rollForward": "latestMajor"
                   },
                   "msbuild-sdks": {
-                    "Meziantou.NET.Sdk": "1.0.73",
+                    "Meziantou.NET.Sdk": "1.0.94",
                     "Microsoft.Build.Traversal": "4.1.82"
                   }
                 }
@@ -2950,7 +2950,7 @@ public sealed class DeltaBuildTests(ITestOutputHelper output) : IAsyncDisposable
                     "rollForward": "latestMajor"
                   },
                   "msbuild-sdks": {
-                    "Meziantou.NET.Sdk": "1.0.73",
+                    "Meziantou.NET.Sdk": "1.0.94",
                     "Microsoft.Build.Traversal": "4.1.82"
                   }
                 }
