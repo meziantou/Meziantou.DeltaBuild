@@ -728,8 +728,8 @@ public sealed class DeltaBuildTests(ITestOutputHelper output) : IAsyncDisposable
             "--base-commit", repo.Commits[^2],
             "--head-commit", repo.Commits[^1]);
 
-        Assert.Contains("No changed files detected. Skipping project graph analysis.", stdout, StringComparison.Ordinal);
-        Assert.DoesNotContain("Analyzing projects using engine:", stdout, StringComparison.Ordinal);
+        Xunit.Assert.Contains("No changed files detected. Skipping project graph analysis.", stdout, StringComparison.Ordinal);
+        Xunit.Assert.DoesNotContain("Analyzing projects using engine:", stdout, StringComparison.Ordinal);
 
         var content = await File.ReadAllTextAsync(outputPath, TestContext.Current.CancellationToken);
         InlineSnapshot.Validate(content.Trim(), """
@@ -1908,7 +1908,7 @@ public sealed class DeltaBuildTests(ITestOutputHelper output) : IAsyncDisposable
             "--shard", "1");
 
         Assert.NotEqual(0, result.ExitCode);
-        Assert.Contains("must be used with --total-shards", result.Stderr + result.Stdout, StringComparison.Ordinal);
+        Xunit.Assert.Contains("must be used with --total-shards", result.Stderr + result.Stdout, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -1922,7 +1922,7 @@ public sealed class DeltaBuildTests(ITestOutputHelper output) : IAsyncDisposable
             "--shard-separate", "tests/Proj/Proj.csproj");
 
         Assert.NotEqual(0, result.ExitCode);
-        Assert.Contains("must be used with --shard and --total-shards", result.Stderr + result.Stdout, StringComparison.Ordinal);
+        Xunit.Assert.Contains("must be used with --shard and --total-shards", result.Stderr + result.Stdout, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -1936,7 +1936,7 @@ public sealed class DeltaBuildTests(ITestOutputHelper output) : IAsyncDisposable
             "--total-shards", "3");
 
         Assert.NotEqual(0, result.ExitCode);
-        Assert.Contains("must be used with --shard", result.Stderr + result.Stdout, StringComparison.Ordinal);
+        Xunit.Assert.Contains("must be used with --shard", result.Stderr + result.Stdout, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -1951,7 +1951,7 @@ public sealed class DeltaBuildTests(ITestOutputHelper output) : IAsyncDisposable
             "--total-shards", "3");
 
         Assert.NotEqual(0, result.ExitCode);
-        Assert.Contains("must be greater than 0", result.Stderr + result.Stdout, StringComparison.Ordinal);
+        Xunit.Assert.Contains("must be greater than 0", result.Stderr + result.Stdout, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -1966,7 +1966,7 @@ public sealed class DeltaBuildTests(ITestOutputHelper output) : IAsyncDisposable
             "--total-shards", "0");
 
         Assert.NotEqual(0, result.ExitCode);
-        Assert.Contains("must be greater than 0", result.Stderr + result.Stdout, StringComparison.Ordinal);
+        Xunit.Assert.Contains("must be greater than 0", result.Stderr + result.Stdout, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -1981,7 +1981,7 @@ public sealed class DeltaBuildTests(ITestOutputHelper output) : IAsyncDisposable
             "--total-shards", "3");
 
         Assert.NotEqual(0, result.ExitCode);
-        Assert.Contains("must be less than or equal to --total-shards", result.Stderr + result.Stdout, StringComparison.Ordinal);
+        Xunit.Assert.Contains("must be less than or equal to --total-shards", result.Stderr + result.Stdout, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -3856,8 +3856,8 @@ public sealed class DeltaBuildTests(ITestOutputHelper output) : IAsyncDisposable
             "--base-commit", repo.Commits[^1],
             "--working-tree");
 
-        Assert.Contains("No changed files detected. Skipping project graph analysis.", stdout, StringComparison.Ordinal);
-        Assert.DoesNotContain("Analyzing projects using engine:", stdout, StringComparison.Ordinal);
+        Xunit.Assert.Contains("No changed files detected. Skipping project graph analysis.", stdout, StringComparison.Ordinal);
+        Xunit.Assert.DoesNotContain("Analyzing projects using engine:", stdout, StringComparison.Ordinal);
 
         var content = await File.ReadAllTextAsync(outputPath, TestContext.Current.CancellationToken);
         // No projects should be affected
@@ -3921,8 +3921,8 @@ public sealed class DeltaBuildTests(ITestOutputHelper output) : IAsyncDisposable
             "--output", outputPath,
             "--repository", repo.RepositoryPath);
 
-        Assert.Contains("Detected GitHub Actions pull request context, using base branch: origin/main", stdout, StringComparison.Ordinal);
-        Assert.Contains($"Comparing {mergeBaseCommit} -> {repo.Commits[^1]}", stdout, StringComparison.Ordinal);
+        Xunit.Assert.Contains("Detected GitHub Actions pull request context, using base branch: origin/main", stdout, StringComparison.Ordinal);
+        Xunit.Assert.Contains($"Comparing {mergeBaseCommit} -> {repo.Commits[^1]}", stdout, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -3971,8 +3971,8 @@ public sealed class DeltaBuildTests(ITestOutputHelper output) : IAsyncDisposable
             "--output", outputPath,
             "--repository", repo.RepositoryPath);
 
-        Assert.Contains("Auto-detected base branch: origin/main", stdout, StringComparison.Ordinal);
-        Assert.DoesNotContain("Detected GitHub Actions pull request context", stdout, StringComparison.Ordinal);
+        Xunit.Assert.Contains("Auto-detected base branch: origin/main", stdout, StringComparison.Ordinal);
+        Xunit.Assert.DoesNotContain("Detected GitHub Actions pull request context", stdout, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -4443,6 +4443,6 @@ public sealed class DeltaBuildTests(ITestOutputHelper output) : IAsyncDisposable
             "--project-bundle", "src/B/B.csproj,src/Missing/Missing.csproj");
 
         Assert.NotEqual(0, result.ExitCode);
-        Assert.Contains("not present in the input project set", result.Stderr + result.Stdout, StringComparison.Ordinal);
+        Xunit.Assert.Contains("not present in the input project set", result.Stderr + result.Stdout, StringComparison.Ordinal);
     }
 }
