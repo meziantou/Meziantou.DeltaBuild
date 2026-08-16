@@ -633,7 +633,7 @@ internal static class DeltaBuildEngine
         {
             // Get directory of the trigger file relative to the repo root
             // e.g., "src/global.json" -> "src/", "global.json" -> ""
-            var lastSlash = triggerFile.LastIndexOf('/');
+            var lastSlash = triggerFile.LastIndexOf('/', StringComparison.Ordinal);
             var triggerDir = lastSlash >= 0 ? triggerFile[..(lastSlash + 1)] : "";
 
             foreach (var projectPath in projectPaths)
