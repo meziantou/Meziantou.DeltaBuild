@@ -463,7 +463,7 @@ internal static class DeltaBuildEngine
         FullPath repositoryPath)
     {
         var globs = includePatterns
-            .Select(p => Glob.Parse(p, GlobOptions.None))
+            .Select(p => Glob.Parse(p, GlobDialect.Standard))
             .ToArray();
 
         var filtered = new List<FullPath>();
@@ -569,7 +569,7 @@ internal static class DeltaBuildEngine
             return matchingFiles;
 
         var globs = triggerPatterns
-            .Select(p => Glob.Parse(p, GlobOptions.None))
+            .Select(p => Glob.Parse(p, GlobDialect.Standard))
             .ToArray();
 
         foreach (var file in changedFiles)
@@ -607,7 +607,7 @@ internal static class DeltaBuildEngine
             return affected;
 
         var globs = triggerPatterns
-            .Select(p => Glob.Parse(p, GlobOptions.None))
+            .Select(p => Glob.Parse(p, GlobDialect.Standard))
             .ToArray();
 
         // Find changed files that match hierarchical trigger patterns
