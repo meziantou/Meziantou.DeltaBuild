@@ -15,14 +15,14 @@ internal sealed class RepositoryBuilder : IAsyncDisposable
 
     public IReadOnlyList<string> Commits => _commits;
 
-    public string RepositoryPath => _directory.FullPath;
+    public FullPath RepositoryPath => _directory.FullPath;
 
     public RepositoryBuilder CreateCommit(params (string Path, string Content)[] files)
     {
         foreach (var (path, content) in files)
         {
-            var fullPath = Path.Combine(_directory.FullPath, path);
-            Directory.CreateDirectory(Path.GetDirectoryName(fullPath)!);
+            var fullPath = _directory.FullPath / path;
+            fullPath.CreateParentDirectory();
             File.WriteAllText(fullPath, content);
         }
 
@@ -43,8 +43,8 @@ internal sealed class RepositoryBuilder : IAsyncDisposable
     {
         foreach (var (path, content) in files)
         {
-            var fullPath = Path.Combine(_directory.FullPath, path);
-            Directory.CreateDirectory(Path.GetDirectoryName(fullPath)!);
+            var fullPath = _directory.FullPath / path;
+            fullPath.CreateParentDirectory();
             File.WriteAllText(fullPath, content);
         }
 

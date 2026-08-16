@@ -67,10 +67,10 @@ public sealed class DeltaBuildTests(ITestOutputHelper output) : IAsyncDisposable
                 """)
         );
 
-        var outputPath = Path.Combine(repo.RepositoryPath, "output.proj");
+        var outputPath = repo.RepositoryPath / "output.proj";
         await RunTool(
             "generate",
-            "--input", Path.Combine(repo.RepositoryPath, "dirs.proj"),
+            "--input", repo.RepositoryPath / "dirs.proj",
             "--output", outputPath,
             "--repository", repo.RepositoryPath,
             "--base-commit", repo.Commits[^2],
@@ -137,10 +137,10 @@ public sealed class DeltaBuildTests(ITestOutputHelper output) : IAsyncDisposable
                 """)
         );
 
-        var outputPath = Path.Combine(repo.RepositoryPath, "output.proj");
+        var outputPath = repo.RepositoryPath / "output.proj";
         await RunTool(
             "generate",
-            "--input", Path.Combine(repo.RepositoryPath, "dirs.proj"),
+            "--input", repo.RepositoryPath / "dirs.proj",
             "--output", outputPath,
             "--repository", repo.RepositoryPath,
             "--base-commit", repo.Commits[^2],
@@ -223,10 +223,10 @@ public sealed class DeltaBuildTests(ITestOutputHelper output) : IAsyncDisposable
                 """)
         );
 
-        var outputPath = Path.Combine(repo.RepositoryPath, "output.proj");
+        var outputPath = repo.RepositoryPath / "output.proj";
         await RunTool(
             "generate",
-            "--input", Path.Combine(repo.RepositoryPath, "dirs.proj"),
+            "--input", repo.RepositoryPath / "dirs.proj",
             "--output", outputPath,
             "--repository", repo.RepositoryPath,
             "--base-commit", repo.Commits[^2],
@@ -300,10 +300,10 @@ public sealed class DeltaBuildTests(ITestOutputHelper output) : IAsyncDisposable
                 """)
         );
 
-        var outputPath = Path.Combine(repo.RepositoryPath, "output.proj");
+        var outputPath = repo.RepositoryPath / "output.proj";
         await RunTool(
             "generate",
-            "--input", Path.Combine(repo.RepositoryPath, "dirs.proj"),
+            "--input", repo.RepositoryPath / "dirs.proj",
             "--output", outputPath,
             "--repository", repo.RepositoryPath,
             "--base-commit", repo.Commits[^2],
@@ -380,10 +380,10 @@ public sealed class DeltaBuildTests(ITestOutputHelper output) : IAsyncDisposable
                 """)
         );
 
-        var outputPath = Path.Combine(repo.RepositoryPath, "output.proj");
+        var outputPath = repo.RepositoryPath / "output.proj";
         await RunTool(
             "generate",
-            "--input", Path.Combine(repo.RepositoryPath, "dirs.proj"),
+            "--input", repo.RepositoryPath / "dirs.proj",
             "--output", outputPath,
             "--repository", repo.RepositoryPath,
             "--base-commit", repo.Commits[^2],
@@ -444,11 +444,11 @@ public sealed class DeltaBuildTests(ITestOutputHelper output) : IAsyncDisposable
                 """)
         );
 
-        var outputPath = Path.Combine(repo.RepositoryPath, "output.proj");
+        var outputPath = repo.RepositoryPath / "output.proj";
         // Use custom trigger that does NOT include Directory.Build.props
         await RunTool(
             "generate",
-            "--input", Path.Combine(repo.RepositoryPath, "dirs.proj"),
+            "--input", repo.RepositoryPath / "dirs.proj",
             "--output", outputPath,
             "--repository", repo.RepositoryPath,
             "--base-commit", repo.Commits[^2],
@@ -515,10 +515,10 @@ public sealed class DeltaBuildTests(ITestOutputHelper output) : IAsyncDisposable
             ("eng/Build.ps1", "# build script")
         );
 
-        var outputPath = Path.Combine(repo.RepositoryPath, "output.proj");
+        var outputPath = repo.RepositoryPath / "output.proj";
         await RunTool(
             "generate",
-            "--input", Path.Combine(repo.RepositoryPath, "dirs.proj"),
+            "--input", repo.RepositoryPath / "dirs.proj",
             "--output", outputPath,
             "--repository", repo.RepositoryPath,
             "--base-commit", repo.Commits[^2],
@@ -587,10 +587,10 @@ public sealed class DeltaBuildTests(ITestOutputHelper output) : IAsyncDisposable
             (".github/workflows/ci.yml", "# CI workflow")
         );
 
-        var outputPath = Path.Combine(repo.RepositoryPath, "output.proj");
+        var outputPath = repo.RepositoryPath / "output.proj";
         await RunTool(
             "generate",
-            "--input", Path.Combine(repo.RepositoryPath, "dirs.proj"),
+            "--input", repo.RepositoryPath / "dirs.proj",
             "--output", outputPath,
             "--repository", repo.RepositoryPath,
             "--base-commit", repo.Commits[^2],
@@ -663,11 +663,11 @@ public sealed class DeltaBuildTests(ITestOutputHelper output) : IAsyncDisposable
                 """)
         );
 
-        var outputPath = Path.Combine(repo.RepositoryPath, "output.proj");
+        var outputPath = repo.RepositoryPath / "output.proj";
         // Only include Feature1 projects
         await RunTool(
             "generate",
-            "--input", Path.Combine(repo.RepositoryPath, "dirs.proj"),
+            "--input", repo.RepositoryPath / "dirs.proj",
             "--output", outputPath,
             "--repository", repo.RepositoryPath,
             "--base-commit", repo.Commits[^2],
@@ -719,10 +719,10 @@ public sealed class DeltaBuildTests(ITestOutputHelper output) : IAsyncDisposable
         // Commit 2: No changes (empty commit)
         repo.CreateCommit();
 
-        var outputPath = Path.Combine(repo.RepositoryPath, "output.proj");
+        var outputPath = repo.RepositoryPath / "output.proj";
         var stdout = await RunTool(
             "generate",
-            "--input", Path.Combine(repo.RepositoryPath, "dirs.proj"),
+            "--input", repo.RepositoryPath / "dirs.proj",
             "--output", outputPath,
             "--repository", repo.RepositoryPath,
             "--base-commit", repo.Commits[^2],
@@ -772,10 +772,10 @@ public sealed class DeltaBuildTests(ITestOutputHelper output) : IAsyncDisposable
 
         repo.CreateCommit();
 
-        var outputPath = Path.Combine(repo.RepositoryPath, "output.proj");
+        var outputPath = repo.RepositoryPath / "output.proj";
         await RunTool(
             "generate",
-            "--input", Path.Combine(repo.RepositoryPath, "dirs.proj"),
+            "--input", repo.RepositoryPath / "dirs.proj",
             "--output", outputPath,
             "--repository", repo.RepositoryPath,
             "--base-commit", repo.Commits[^2],
@@ -813,12 +813,12 @@ public sealed class DeltaBuildTests(ITestOutputHelper output) : IAsyncDisposable
 
         repo.CreateCommit();
 
-        var outputPath = Path.Combine(repo.RepositoryPath, "output.proj");
+        var outputPath = repo.RepositoryPath / "output.proj";
         await File.WriteAllTextAsync(outputPath, "existing output", TestContext.Current.CancellationToken);
 
         await RunTool(
             "generate",
-            "--input", Path.Combine(repo.RepositoryPath, "dirs.proj"),
+            "--input", repo.RepositoryPath / "dirs.proj",
             "--output", outputPath,
             "--repository", repo.RepositoryPath,
             "--base-commit", repo.Commits[^2],
@@ -862,10 +862,10 @@ public sealed class DeltaBuildTests(ITestOutputHelper output) : IAsyncDisposable
                 """)
         );
 
-        var outputPath = Path.Combine(repo.RepositoryPath, "output.proj");
+        var outputPath = repo.RepositoryPath / "output.proj";
         await RunTool(
             "generate",
-            "--input", Path.Combine(repo.RepositoryPath, "dirs.proj"),
+            "--input", repo.RepositoryPath / "dirs.proj",
             "--output", outputPath,
             "--repository", repo.RepositoryPath,
             "--base-commit", repo.Commits[^2],
@@ -920,10 +920,10 @@ public sealed class DeltaBuildTests(ITestOutputHelper output) : IAsyncDisposable
                 """)
         );
 
-        var outputPath = Path.Combine(repo.RepositoryPath, "output.proj");
+        var outputPath = repo.RepositoryPath / "output.proj";
         await RunTool(
             "generate",
-            "--input", Path.Combine(repo.RepositoryPath, "dirs.proj"),
+            "--input", repo.RepositoryPath / "dirs.proj",
             "--output", outputPath,
             "--repository", repo.RepositoryPath,
             "--base-commit", repo.Commits[^2],
@@ -973,10 +973,10 @@ public sealed class DeltaBuildTests(ITestOutputHelper output) : IAsyncDisposable
                 """)
         );
 
-        var outputPath = Path.Combine(repo.RepositoryPath, "output.proj");
+        var outputPath = repo.RepositoryPath / "output.proj";
         await RunTool(
             "generate",
-            "--input", Path.Combine(repo.RepositoryPath, "src/App/App.csproj"),
+            "--input", repo.RepositoryPath / "src/App/App.csproj",
             "--output", outputPath,
             "--repository", repo.RepositoryPath,
             "--base-commit", repo.Commits[^2],
@@ -1024,10 +1024,10 @@ public sealed class DeltaBuildTests(ITestOutputHelper output) : IAsyncDisposable
                 """)
         );
 
-        var outputPath = Path.Combine(repo.RepositoryPath, "output.proj");
+        var outputPath = repo.RepositoryPath / "output.proj";
         await RunTool(
             "generate",
-            "--input", Path.Combine(repo.RepositoryPath, "src/App/App.csproj"),
+            "--input", repo.RepositoryPath / "src/App/App.csproj",
             "--output", outputPath,
             "--repository", repo.RepositoryPath,
             "--base-commit", repo.Commits[^2],
@@ -1099,10 +1099,10 @@ public sealed class DeltaBuildTests(ITestOutputHelper output) : IAsyncDisposable
                 """)
         );
 
-        var outputPath = Path.Combine(repo.RepositoryPath, "output.proj");
+        var outputPath = repo.RepositoryPath / "output.proj";
         await RunTool(
             "generate",
-            "--input", Path.Combine(repo.RepositoryPath, "dirs.proj"),
+            "--input", repo.RepositoryPath / "dirs.proj",
             "--output", outputPath,
             "--repository", repo.RepositoryPath,
             "--base-commit", repo.Commits[^2],
@@ -1165,11 +1165,11 @@ public sealed class DeltaBuildTests(ITestOutputHelper output) : IAsyncDisposable
                 """)
         );
 
-        var outputPath = Path.Combine(repo.RepositoryPath, "output.proj");
+        var outputPath = repo.RepositoryPath / "output.proj";
         // Use single project as input — it should discover Lib via transitive closure
         await RunTool(
             "generate",
-            "--input", Path.Combine(repo.RepositoryPath, "src/App/App.csproj"),
+            "--input", repo.RepositoryPath / "src/App/App.csproj",
             "--output", outputPath,
             "--repository", repo.RepositoryPath,
             "--base-commit", repo.Commits[^2],
@@ -1257,10 +1257,10 @@ public sealed class DeltaBuildTests(ITestOutputHelper output) : IAsyncDisposable
                 """)
         );
 
-        var outputPath = Path.Combine(repo.RepositoryPath, "output.proj");
+        var outputPath = repo.RepositoryPath / "output.proj";
         await RunTool(
             "generate",
-            "--input", Path.Combine(repo.RepositoryPath, "dirs.proj"),
+            "--input", repo.RepositoryPath / "dirs.proj",
             "--output", outputPath,
             "--repository", repo.RepositoryPath,
             "--base-commit", repo.Commits[^2],
@@ -1328,10 +1328,10 @@ public sealed class DeltaBuildTests(ITestOutputHelper output) : IAsyncDisposable
                 """)
         );
 
-        var outputPath = Path.Combine(repo.RepositoryPath, "output.json");
+        var outputPath = repo.RepositoryPath / "output.json";
         await RunTool(
             "generate",
-            "--input", Path.Combine(repo.RepositoryPath, "dirs.proj"),
+            "--input", repo.RepositoryPath / "dirs.proj",
             "--output", outputPath,
             "--repository", repo.RepositoryPath,
             "--base-commit", repo.Commits[^2],
@@ -1391,10 +1391,10 @@ public sealed class DeltaBuildTests(ITestOutputHelper output) : IAsyncDisposable
                 """)
         );
 
-        var outputPath = Path.Combine(repo.RepositoryPath, "output.txt");
+        var outputPath = repo.RepositoryPath / "output.txt";
         await RunTool(
             "generate",
-            "--input", Path.Combine(repo.RepositoryPath, "dirs.proj"),
+            "--input", repo.RepositoryPath / "dirs.proj",
             "--output", outputPath,
             "--repository", repo.RepositoryPath,
             "--base-commit", repo.Commits[^2],
@@ -1471,10 +1471,10 @@ public sealed class DeltaBuildTests(ITestOutputHelper output) : IAsyncDisposable
                 """)
         );
 
-        var outputPath = Path.Combine(repo.RepositoryPath, "output.txt");
+        var outputPath = repo.RepositoryPath / "output.txt";
         await RunTool(
             "generate",
-            "--input", Path.Combine(repo.RepositoryPath, "dirs.proj"),
+            "--input", repo.RepositoryPath / "dirs.proj",
             "--output", outputPath,
             "--repository", repo.RepositoryPath,
             "--base-commit", repo.Commits[^2],
@@ -1535,10 +1535,10 @@ public sealed class DeltaBuildTests(ITestOutputHelper output) : IAsyncDisposable
                 """)
         );
 
-        var outputPath = Path.Combine(repo.RepositoryPath, "output.txt");
+        var outputPath = repo.RepositoryPath / "output.txt";
         await RunTool(
             "generate",
-            "--input", Path.Combine(repo.RepositoryPath, "dirs.proj"),
+            "--input", repo.RepositoryPath / "dirs.proj",
             "--output", outputPath,
             "--repository", repo.RepositoryPath,
             "--base-commit", repo.Commits[^2],
@@ -1643,10 +1643,10 @@ public sealed class DeltaBuildTests(ITestOutputHelper output) : IAsyncDisposable
                 """)
         );
 
-        var outputPath = Path.Combine(repo.RepositoryPath, "output.txt");
+        var outputPath = repo.RepositoryPath / "output.txt";
         await RunTool(
             "generate",
-            "--input", Path.Combine(repo.RepositoryPath, "dirs.proj"),
+            "--input", repo.RepositoryPath / "dirs.proj",
             "--output", outputPath,
             "--repository", repo.RepositoryPath,
             "--base-commit", repo.Commits[^2],
@@ -1660,9 +1660,9 @@ public sealed class DeltaBuildTests(ITestOutputHelper output) : IAsyncDisposable
             src/App4/App4.csproj
             """);
 
-        Assert.False(File.Exists(Path.Combine(repo.RepositoryPath, "output.shard-1.txt")));
-        Assert.False(File.Exists(Path.Combine(repo.RepositoryPath, "output.shard-2.txt")));
-        Assert.False(File.Exists(Path.Combine(repo.RepositoryPath, "output.shard-3.txt")));
+        Assert.False(File.Exists(repo.RepositoryPath / "output.shard-1.txt"));
+        Assert.False(File.Exists(repo.RepositoryPath / "output.shard-2.txt"));
+        Assert.False(File.Exists(repo.RepositoryPath / "output.shard-3.txt"));
     }
 
     [Fact]
@@ -1749,10 +1749,10 @@ public sealed class DeltaBuildTests(ITestOutputHelper output) : IAsyncDisposable
                 """)
         );
 
-        var shard1OutputPath = Path.Combine(repo.RepositoryPath, "output.shard-1.txt");
+        var shard1OutputPath = repo.RepositoryPath / "output.shard-1.txt";
         await RunTool(
             "generate",
-            "--input", Path.Combine(repo.RepositoryPath, "dirs.proj"),
+            "--input", repo.RepositoryPath / "dirs.proj",
             "--output", shard1OutputPath,
             "--repository", repo.RepositoryPath,
             "--base-commit", repo.Commits[^2],
@@ -1772,10 +1772,10 @@ public sealed class DeltaBuildTests(ITestOutputHelper output) : IAsyncDisposable
             src/App5/App5.csproj
             """);
 
-        var shard2OutputPath = Path.Combine(repo.RepositoryPath, "output.shard-2.txt");
+        var shard2OutputPath = repo.RepositoryPath / "output.shard-2.txt";
         await RunTool(
             "generate",
-            "--input", Path.Combine(repo.RepositoryPath, "dirs.proj"),
+            "--input", repo.RepositoryPath / "dirs.proj",
             "--output", shard2OutputPath,
             "--repository", repo.RepositoryPath,
             "--base-commit", repo.Commits[^2],
@@ -1875,10 +1875,10 @@ public sealed class DeltaBuildTests(ITestOutputHelper output) : IAsyncDisposable
                 """)
         );
 
-        var outputPath = Path.Combine(repo.RepositoryPath, "output.txt");
+        var outputPath = repo.RepositoryPath / "output.txt";
         await RunTool(
             "generate",
-            "--input", Path.Combine(repo.RepositoryPath, "dirs.proj"),
+            "--input", repo.RepositoryPath / "dirs.proj",
             "--output", outputPath,
             "--repository", repo.RepositoryPath,
             "--base-commit", repo.Commits[^2],
@@ -1892,9 +1892,9 @@ public sealed class DeltaBuildTests(ITestOutputHelper output) : IAsyncDisposable
             tests/A.Tests/A.Tests.csproj
             """);
 
-        Assert.False(File.Exists(Path.Combine(repo.RepositoryPath, "output.shard-1.txt")));
-        Assert.False(File.Exists(Path.Combine(repo.RepositoryPath, "output.shard-2.txt")));
-        Assert.False(File.Exists(Path.Combine(repo.RepositoryPath, "output.shard-3.txt")));
+        Assert.False(File.Exists(repo.RepositoryPath / "output.shard-1.txt"));
+        Assert.False(File.Exists(repo.RepositoryPath / "output.shard-2.txt"));
+        Assert.False(File.Exists(repo.RepositoryPath / "output.shard-3.txt"));
     }
 
     [Fact]
@@ -2041,10 +2041,10 @@ public sealed class DeltaBuildTests(ITestOutputHelper output) : IAsyncDisposable
                 """)
         );
 
-        var outputPath = Path.Combine(repo.RepositoryPath, "output.proj");
+        var outputPath = repo.RepositoryPath / "output.proj";
         await RunTool(
             "generate",
-            "--input", Path.Combine(repo.RepositoryPath, "dirs.proj"),
+            "--input", repo.RepositoryPath / "dirs.proj",
             "--output", outputPath,
             "--repository", repo.RepositoryPath,
             "--base-commit", repo.Commits[^2],
@@ -2127,10 +2127,10 @@ public sealed class DeltaBuildTests(ITestOutputHelper output) : IAsyncDisposable
                 """)
         );
 
-        var outputPath = Path.Combine(repo.RepositoryPath, "output.proj");
+        var outputPath = repo.RepositoryPath / "output.proj";
         await RunTool(
             "generate",
-            "--input", Path.Combine(repo.RepositoryPath, "dirs.proj"),
+            "--input", repo.RepositoryPath / "dirs.proj",
             "--output", outputPath,
             "--repository", repo.RepositoryPath,
             "--base-commit", repo.Commits[^2],
@@ -2214,10 +2214,10 @@ public sealed class DeltaBuildTests(ITestOutputHelper output) : IAsyncDisposable
                 """)
         );
 
-        var outputPath = Path.Combine(repo.RepositoryPath, "output.proj");
+        var outputPath = repo.RepositoryPath / "output.proj";
         await RunTool(
             "generate",
-            "--input", Path.Combine(repo.RepositoryPath, "dirs.proj"),
+            "--input", repo.RepositoryPath / "dirs.proj",
             "--output", outputPath,
             "--repository", repo.RepositoryPath,
             "--base-commit", repo.Commits[^2],
@@ -2300,11 +2300,11 @@ public sealed class DeltaBuildTests(ITestOutputHelper output) : IAsyncDisposable
                 """)
         );
 
-        var outputPath = Path.Combine(repo.RepositoryPath, "output.proj");
+        var outputPath = repo.RepositoryPath / "output.proj";
         // Use a custom trigger to avoid the default **/*.props matching build/Common.props
         await RunTool(
             "generate",
-            "--input", Path.Combine(repo.RepositoryPath, "dirs.proj"),
+            "--input", repo.RepositoryPath / "dirs.proj",
             "--output", outputPath,
             "--repository", repo.RepositoryPath,
             "--base-commit", repo.Commits[^2],
@@ -2398,10 +2398,10 @@ public sealed class DeltaBuildTests(ITestOutputHelper output) : IAsyncDisposable
                 """)
         );
 
-        var outputPath = Path.Combine(repo.RepositoryPath, "output.proj");
+        var outputPath = repo.RepositoryPath / "output.proj";
         await RunTool(
             "generate",
-            "--input", Path.Combine(repo.RepositoryPath, "dirs.proj"),
+            "--input", repo.RepositoryPath / "dirs.proj",
             "--output", outputPath,
             "--repository", repo.RepositoryPath,
             "--base-commit", repo.Commits[^2],
@@ -2490,10 +2490,10 @@ public sealed class DeltaBuildTests(ITestOutputHelper output) : IAsyncDisposable
                 """)
         );
 
-        var outputPath = Path.Combine(repo.RepositoryPath, "output.proj");
+        var outputPath = repo.RepositoryPath / "output.proj";
         await RunTool(
             "generate",
-            "--input", Path.Combine(repo.RepositoryPath, "dirs.proj"),
+            "--input", repo.RepositoryPath / "dirs.proj",
             "--output", outputPath,
             "--repository", repo.RepositoryPath,
             "--base-commit", repo.Commits[^2],
@@ -2560,10 +2560,10 @@ public sealed class DeltaBuildTests(ITestOutputHelper output) : IAsyncDisposable
                 """)
         );
 
-        var outputPath = Path.Combine(repo.RepositoryPath, "output.proj");
+        var outputPath = repo.RepositoryPath / "output.proj";
         await RunTool(
             "generate",
-            "--input", Path.Combine(repo.RepositoryPath, "dirs.proj"),
+            "--input", repo.RepositoryPath / "dirs.proj",
             "--output", outputPath,
             "--repository", repo.RepositoryPath,
             "--base-commit", repo.Commits[^2],
@@ -2656,10 +2656,10 @@ public sealed class DeltaBuildTests(ITestOutputHelper output) : IAsyncDisposable
                 """)
         );
 
-        var outputPath = Path.Combine(repo.RepositoryPath, "output.proj");
+        var outputPath = repo.RepositoryPath / "output.proj";
         await RunTool(
             "generate",
-            "--input", Path.Combine(repo.RepositoryPath, "dirs.proj"),
+            "--input", repo.RepositoryPath / "dirs.proj",
             "--output", outputPath,
             "--repository", repo.RepositoryPath,
             "--base-commit", repo.Commits[^2],
@@ -2750,10 +2750,10 @@ public sealed class DeltaBuildTests(ITestOutputHelper output) : IAsyncDisposable
                 """)
         );
 
-        var outputPath = Path.Combine(repo.RepositoryPath, "output.proj");
+        var outputPath = repo.RepositoryPath / "output.proj";
         await RunTool(
             "generate",
-            "--input", Path.Combine(repo.RepositoryPath, "dirs.proj"),
+            "--input", repo.RepositoryPath / "dirs.proj",
             "--output", outputPath,
             "--repository", repo.RepositoryPath,
             "--base-commit", repo.Commits[^2],
@@ -2832,10 +2832,10 @@ public sealed class DeltaBuildTests(ITestOutputHelper output) : IAsyncDisposable
                 """)
         );
 
-        var outputPath = Path.Combine(repo.RepositoryPath, "output.proj");
+        var outputPath = repo.RepositoryPath / "output.proj";
         await RunTool(
             "generate",
-            "--input", Path.Combine(repo.RepositoryPath, "dirs.proj"),
+            "--input", repo.RepositoryPath / "dirs.proj",
             "--output", outputPath,
             "--repository", repo.RepositoryPath,
             "--base-commit", repo.Commits[^2],
@@ -2907,10 +2907,10 @@ public sealed class DeltaBuildTests(ITestOutputHelper output) : IAsyncDisposable
                 """)
         );
 
-        var outputPath = Path.Combine(repo.RepositoryPath, "output.proj");
+        var outputPath = repo.RepositoryPath / "output.proj";
         await RunTool(
             "generate",
-            "--input", Path.Combine(repo.RepositoryPath, "dirs.proj"),
+            "--input", repo.RepositoryPath / "dirs.proj",
             "--output", outputPath,
             "--repository", repo.RepositoryPath,
             "--base-commit", repo.Commits[^2],
@@ -2994,10 +2994,10 @@ public sealed class DeltaBuildTests(ITestOutputHelper output) : IAsyncDisposable
                 """)
         );
 
-        var outputPath = Path.Combine(repo.RepositoryPath, "output.proj");
+        var outputPath = repo.RepositoryPath / "output.proj";
         await RunTool(
             "generate",
-            "--input", Path.Combine(repo.RepositoryPath, "dirs.proj"),
+            "--input", repo.RepositoryPath / "dirs.proj",
             "--output", outputPath,
             "--repository", repo.RepositoryPath,
             "--base-commit", repo.Commits[^2],
@@ -3097,10 +3097,10 @@ public sealed class DeltaBuildTests(ITestOutputHelper output) : IAsyncDisposable
                 """)
         );
 
-        var outputPath = Path.Combine(repo.RepositoryPath, "output.proj");
+        var outputPath = repo.RepositoryPath / "output.proj";
         await RunTool(
             "generate",
-            "--input", Path.Combine(repo.RepositoryPath, "dirs.proj"),
+            "--input", repo.RepositoryPath / "dirs.proj",
             "--output", outputPath,
             "--repository", repo.RepositoryPath,
             "--base-commit", repo.Commits[^2],
@@ -3189,10 +3189,10 @@ public sealed class DeltaBuildTests(ITestOutputHelper output) : IAsyncDisposable
                 """)
         );
 
-        var outputPath = Path.Combine(repo.RepositoryPath, "output.proj");
+        var outputPath = repo.RepositoryPath / "output.proj";
         await RunTool(
             "generate",
-            "--input", Path.Combine(repo.RepositoryPath, "dirs.proj"),
+            "--input", repo.RepositoryPath / "dirs.proj",
             "--output", outputPath,
             "--repository", repo.RepositoryPath,
             "--base-commit", repo.Commits[^2],
@@ -3268,10 +3268,10 @@ public sealed class DeltaBuildTests(ITestOutputHelper output) : IAsyncDisposable
                 """)
         );
 
-        var outputPath = Path.Combine(repo.RepositoryPath, "output.proj");
+        var outputPath = repo.RepositoryPath / "output.proj";
         await RunTool(
             "generate",
-            "--input", Path.Combine(repo.RepositoryPath, "dirs.proj"),
+            "--input", repo.RepositoryPath / "dirs.proj",
             "--output", outputPath,
             "--repository", repo.RepositoryPath,
             "--base-commit", repo.Commits[^2],
@@ -3345,10 +3345,10 @@ public sealed class DeltaBuildTests(ITestOutputHelper output) : IAsyncDisposable
                 """)
         );
 
-        var outputPath = Path.Combine(repo.RepositoryPath, "output.proj");
+        var outputPath = repo.RepositoryPath / "output.proj";
         await RunTool(
             "generate",
-            "--input", Path.Combine(repo.RepositoryPath, "dirs.proj"),
+            "--input", repo.RepositoryPath / "dirs.proj",
             "--output", outputPath,
             "--repository", repo.RepositoryPath,
             "--base-commit", repo.Commits[^2],
@@ -3414,11 +3414,11 @@ public sealed class DeltaBuildTests(ITestOutputHelper output) : IAsyncDisposable
             ("src/build.lock", "locked")
         );
 
-        var outputPath = Path.Combine(repo.RepositoryPath, "output.proj");
+        var outputPath = repo.RepositoryPath / "output.proj";
         // Use custom hierarchical trigger that matches build.lock
         await RunTool(
             "generate",
-            "--input", Path.Combine(repo.RepositoryPath, "dirs.proj"),
+            "--input", repo.RepositoryPath / "dirs.proj",
             "--output", outputPath,
             "--repository", repo.RepositoryPath,
             "--base-commit", repo.Commits[^2],
@@ -3489,10 +3489,10 @@ public sealed class DeltaBuildTests(ITestOutputHelper output) : IAsyncDisposable
                 """)
         );
 
-        var outputPath = Path.Combine(repo.RepositoryPath, "output.proj");
+        var outputPath = repo.RepositoryPath / "output.proj";
         await RunTool(
             "generate",
-            "--input", Path.Combine(repo.RepositoryPath, "dirs.proj"),
+            "--input", repo.RepositoryPath / "dirs.proj",
             "--output", outputPath,
             "--repository", repo.RepositoryPath,
             "--base-commit", repo.Commits[^2],
@@ -3569,10 +3569,10 @@ public sealed class DeltaBuildTests(ITestOutputHelper output) : IAsyncDisposable
                 """)
         );
 
-        var outputPath = Path.Combine(repo.RepositoryPath, "output.proj");
+        var outputPath = repo.RepositoryPath / "output.proj";
         await RunTool(
             "generate",
-            "--input", Path.Combine(repo.RepositoryPath, "dirs.proj"),
+            "--input", repo.RepositoryPath / "dirs.proj",
             "--output", outputPath,
             "--repository", repo.RepositoryPath,
             "--base-commit", repo.Commits[^2],
@@ -3649,10 +3649,10 @@ public sealed class DeltaBuildTests(ITestOutputHelper output) : IAsyncDisposable
                 """)
         );
 
-        var outputPath = Path.Combine(repo.RepositoryPath, "output.proj");
+        var outputPath = repo.RepositoryPath / "output.proj";
         await RunTool(
             "generate",
-            "--input", Path.Combine(repo.RepositoryPath, "dirs.proj"),
+            "--input", repo.RepositoryPath / "dirs.proj",
             "--output", outputPath,
             "--repository", repo.RepositoryPath,
             "--base-commit", repo.Commits[^2],
@@ -3722,10 +3722,10 @@ public sealed class DeltaBuildTests(ITestOutputHelper output) : IAsyncDisposable
                 """)
         );
 
-        var outputPath = Path.Combine(repo.RepositoryPath, "output.proj");
+        var outputPath = repo.RepositoryPath / "output.proj";
         await RunTool(
             "generate",
-            "--input", Path.Combine(repo.RepositoryPath, "dirs.proj"),
+            "--input", repo.RepositoryPath / "dirs.proj",
             "--output", outputPath,
             "--repository", repo.RepositoryPath,
             "--base-commit", repo.Commits[^1],
@@ -3794,10 +3794,10 @@ public sealed class DeltaBuildTests(ITestOutputHelper output) : IAsyncDisposable
                 """)
         );
 
-        var outputPath = Path.Combine(repo.RepositoryPath, "output.proj");
+        var outputPath = repo.RepositoryPath / "output.proj";
         await RunTool(
             "generate",
-            "--input", Path.Combine(repo.RepositoryPath, "dirs.proj"),
+            "--input", repo.RepositoryPath / "dirs.proj",
             "--output", outputPath,
             "--repository", repo.RepositoryPath,
             "--base-commit", repo.Commits[^1],
@@ -3847,10 +3847,10 @@ public sealed class DeltaBuildTests(ITestOutputHelper output) : IAsyncDisposable
         );
 
         // No working tree modifications — compare HEAD against working tree
-        var outputPath = Path.Combine(repo.RepositoryPath, "output.proj");
+        var outputPath = repo.RepositoryPath / "output.proj";
         var stdout = await RunTool(
             "generate",
-            "--input", Path.Combine(repo.RepositoryPath, "dirs.proj"),
+            "--input", repo.RepositoryPath / "dirs.proj",
             "--output", outputPath,
             "--repository", repo.RepositoryPath,
             "--base-commit", repo.Commits[^1],
@@ -3908,7 +3908,7 @@ public sealed class DeltaBuildTests(ITestOutputHelper output) : IAsyncDisposable
         repo.SetRemoteTrackingBranch("main", mergeBaseCommit)
             .SetDefaultRemoteBranch("main");
 
-        var outputPath = Path.Combine(repo.RepositoryPath, "output.proj");
+        var outputPath = repo.RepositoryPath / "output.proj";
         var stdout = await RunTool(
             new Dictionary<string, string?>(StringComparer.Ordinal)
             {
@@ -3917,7 +3917,7 @@ public sealed class DeltaBuildTests(ITestOutputHelper output) : IAsyncDisposable
                 ["GITHUB_BASE_REF"] = "main",
             },
             "generate",
-            "--input", Path.Combine(repo.RepositoryPath, "dirs.proj"),
+            "--input", repo.RepositoryPath / "dirs.proj",
             "--output", outputPath,
             "--repository", repo.RepositoryPath);
 
@@ -3958,7 +3958,7 @@ public sealed class DeltaBuildTests(ITestOutputHelper output) : IAsyncDisposable
         repo.SetRemoteTrackingBranch("main", repo.Commits[^2])
             .SetDefaultRemoteBranch("main");
 
-        var outputPath = Path.Combine(repo.RepositoryPath, "output.proj");
+        var outputPath = repo.RepositoryPath / "output.proj";
         var stdout = await RunTool(
             new Dictionary<string, string?>(StringComparer.Ordinal)
             {
@@ -3967,7 +3967,7 @@ public sealed class DeltaBuildTests(ITestOutputHelper output) : IAsyncDisposable
                 ["GITHUB_BASE_REF"] = "main",
             },
             "generate",
-            "--input", Path.Combine(repo.RepositoryPath, "dirs.proj"),
+            "--input", repo.RepositoryPath / "dirs.proj",
             "--output", outputPath,
             "--repository", repo.RepositoryPath);
 
@@ -4020,10 +4020,10 @@ public sealed class DeltaBuildTests(ITestOutputHelper output) : IAsyncDisposable
                 """)
         );
 
-        var outputPath = Path.Combine(repo.RepositoryPath, "output.proj");
+        var outputPath = repo.RepositoryPath / "output.proj";
         await RunTool(
             "generate",
-            "--input", Path.Combine(repo.RepositoryPath, "dirs.proj"),
+            "--input", repo.RepositoryPath / "dirs.proj",
             "--output", outputPath,
             "--repository", repo.RepositoryPath,
             "--base-commit", repo.Commits[^2],
@@ -4107,10 +4107,10 @@ public sealed class DeltaBuildTests(ITestOutputHelper output) : IAsyncDisposable
                 """)
         );
 
-        var outputPath = Path.Combine(repo.RepositoryPath, "output.proj");
+        var outputPath = repo.RepositoryPath / "output.proj";
         await RunTool(
             "generate",
-            "--input", Path.Combine(repo.RepositoryPath, "dirs.proj"),
+            "--input", repo.RepositoryPath / "dirs.proj",
             "--output", outputPath,
             "--repository", repo.RepositoryPath,
             "--base-commit", repo.Commits[^2],
@@ -4190,10 +4190,10 @@ public sealed class DeltaBuildTests(ITestOutputHelper output) : IAsyncDisposable
                 """)
         );
 
-        var outputPath = Path.Combine(repo.RepositoryPath, "output.proj");
+        var outputPath = repo.RepositoryPath / "output.proj";
         await RunTool(
             "generate",
-            "--input", Path.Combine(repo.RepositoryPath, "dirs.proj"),
+            "--input", repo.RepositoryPath / "dirs.proj",
             "--output", outputPath,
             "--repository", repo.RepositoryPath,
             "--base-commit", repo.Commits[^2],
@@ -4273,10 +4273,10 @@ public sealed class DeltaBuildTests(ITestOutputHelper output) : IAsyncDisposable
                 """)
         );
 
-        var outputPath = Path.Combine(repo.RepositoryPath, "output.proj");
+        var outputPath = repo.RepositoryPath / "output.proj";
         await RunTool(
             "generate",
-            "--input", Path.Combine(repo.RepositoryPath, "dirs.proj"),
+            "--input", repo.RepositoryPath / "dirs.proj",
             "--output", outputPath,
             "--repository", repo.RepositoryPath,
             "--base-commit", repo.Commits[^2],
@@ -4359,10 +4359,10 @@ public sealed class DeltaBuildTests(ITestOutputHelper output) : IAsyncDisposable
                 """)
         );
 
-        var outputPath = Path.Combine(repo.RepositoryPath, "output.proj");
+        var outputPath = repo.RepositoryPath / "output.proj";
         await RunTool(
             "generate",
-            "--input", Path.Combine(repo.RepositoryPath, "dirs.proj"),
+            "--input", repo.RepositoryPath / "dirs.proj",
             "--output", outputPath,
             "--repository", repo.RepositoryPath,
             "--base-commit", repo.Commits[^2],
@@ -4431,11 +4431,11 @@ public sealed class DeltaBuildTests(ITestOutputHelper output) : IAsyncDisposable
                 """)
         );
 
-        var outputPath = Path.Combine(repo.RepositoryPath, "output.proj");
+        var outputPath = repo.RepositoryPath / "output.proj";
         var result = await ToolRunner.RunToolRawAsync(
             output,
             "generate",
-            "--input", Path.Combine(repo.RepositoryPath, "dirs.proj"),
+            "--input", repo.RepositoryPath / "dirs.proj",
             "--output", outputPath,
             "--repository", repo.RepositoryPath,
             "--base-commit", repo.Commits[^2],
