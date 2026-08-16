@@ -152,7 +152,7 @@ When `--shard-separate` is used, listed projects are spread across shards in dec
 |-----------|--------|
 | `.sln` | Visual Studio solution (v12) |
 | `.slnx` | XML-based solution (Visual Studio 2022+) |
-| `.proj` | MSBuild Traversal SDK project with `<ProjectReference>` items. All generated paths are prefixed with `$(MSBuildThisFileDirectory)` for stable path resolution. Automatically imports `<output>.before.proj` and `<output>.after.proj` if they exist, allowing you to inject custom MSBuild logic. |
+| `.proj` | MSBuild Traversal SDK project with `<ProjectReference>` items and an `<IsTraversal>true</IsTraversal>` property. All generated paths are prefixed with `$(MSBuildThisFileDirectory)` for stable path resolution. Automatically imports `<output>.before.proj` and `<output>.after.proj` if they exist, allowing you to inject custom MSBuild logic. |
 | `.json` | JSON array of affected project paths |
 | `.txt` | One project path per line |
 
