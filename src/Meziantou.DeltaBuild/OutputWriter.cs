@@ -457,6 +457,9 @@ internal static class OutputWriter
 
         var root = doc.Root!;
 
+        root.Add(new XElement("PropertyGroup",
+            new XElement("IsTraversal", "true")));
+
         // Add conditional before-import
         root.Add(new XElement("Import",
             new XAttribute("Project", traversalBeforeImportPath),

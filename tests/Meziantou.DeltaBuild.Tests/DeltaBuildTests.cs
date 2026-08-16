@@ -79,6 +79,9 @@ public sealed class DeltaBuildTests(ITestOutputHelper output) : IAsyncDisposable
         var content = await File.ReadAllTextAsync(outputPath, TestContext.Current.CancellationToken);
         InlineSnapshot.Validate(content.Trim(), """
             <Project Sdk="Microsoft.Build.Traversal">
+              <PropertyGroup>
+                <IsTraversal>true</IsTraversal>
+              </PropertyGroup>
               <Import Project="$(MSBuildThisFileDirectory)output.before.proj" Condition="Exists('$(MSBuildThisFileDirectory)output.before.proj')" />
               <ItemGroup>
                 <ProjectReference Include="$(MSBuildThisFileDirectory)src/App/App.csproj" />
@@ -146,6 +149,9 @@ public sealed class DeltaBuildTests(ITestOutputHelper output) : IAsyncDisposable
         var content = await File.ReadAllTextAsync(outputPath, TestContext.Current.CancellationToken);
         InlineSnapshot.Validate(content.Trim(), """
             <Project Sdk="Microsoft.Build.Traversal">
+              <PropertyGroup>
+                <IsTraversal>true</IsTraversal>
+              </PropertyGroup>
               <Import Project="$(MSBuildThisFileDirectory)output.before.proj" Condition="Exists('$(MSBuildThisFileDirectory)output.before.proj')" />
               <ItemGroup>
                 <ProjectReference Include="$(MSBuildThisFileDirectory)src/App1/App1.csproj" />
@@ -231,6 +237,9 @@ public sealed class DeltaBuildTests(ITestOutputHelper output) : IAsyncDisposable
         // Unrelated should NOT be included
         InlineSnapshot.Validate(content.Trim(), """
             <Project Sdk="Microsoft.Build.Traversal">
+              <PropertyGroup>
+                <IsTraversal>true</IsTraversal>
+              </PropertyGroup>
               <Import Project="$(MSBuildThisFileDirectory)output.before.proj" Condition="Exists('$(MSBuildThisFileDirectory)output.before.proj')" />
               <ItemGroup>
                 <ProjectReference Include="$(MSBuildThisFileDirectory)src/App/App.csproj" />
@@ -304,6 +313,9 @@ public sealed class DeltaBuildTests(ITestOutputHelper output) : IAsyncDisposable
         // All projects should be included because Directory.Build.props is imported by all projects
         InlineSnapshot.Validate(content.Trim(), """
             <Project Sdk="Microsoft.Build.Traversal">
+              <PropertyGroup>
+                <IsTraversal>true</IsTraversal>
+              </PropertyGroup>
               <Import Project="$(MSBuildThisFileDirectory)output.before.proj" Condition="Exists('$(MSBuildThisFileDirectory)output.before.proj')" />
               <ItemGroup>
                 <ProjectReference Include="$(MSBuildThisFileDirectory)src/App1/App1.csproj" />
@@ -381,6 +393,9 @@ public sealed class DeltaBuildTests(ITestOutputHelper output) : IAsyncDisposable
         // All projects should be included because nuget config is a full-rebuild trigger
         InlineSnapshot.Validate(content.Trim(), """
             <Project Sdk="Microsoft.Build.Traversal">
+              <PropertyGroup>
+                <IsTraversal>true</IsTraversal>
+              </PropertyGroup>
               <Import Project="$(MSBuildThisFileDirectory)output.before.proj" Condition="Exists('$(MSBuildThisFileDirectory)output.before.proj')" />
               <ItemGroup>
                 <ProjectReference Include="$(MSBuildThisFileDirectory)src/App1/App1.csproj" />
@@ -444,6 +459,9 @@ public sealed class DeltaBuildTests(ITestOutputHelper output) : IAsyncDisposable
         // App is affected because Directory.Build.props is implicitly imported by MSBuild
         InlineSnapshot.Validate(content.Trim(), """
             <Project Sdk="Microsoft.Build.Traversal">
+              <PropertyGroup>
+                <IsTraversal>true</IsTraversal>
+              </PropertyGroup>
               <Import Project="$(MSBuildThisFileDirectory)output.before.proj" Condition="Exists('$(MSBuildThisFileDirectory)output.before.proj')" />
               <ItemGroup>
                 <ProjectReference Include="$(MSBuildThisFileDirectory)src/App/App.csproj" />
@@ -512,6 +530,9 @@ public sealed class DeltaBuildTests(ITestOutputHelper output) : IAsyncDisposable
         // All projects should be included because eng/Build.ps1 matches the "eng/**/*" trigger
         InlineSnapshot.Validate(content.Trim(), """
             <Project Sdk="Microsoft.Build.Traversal">
+              <PropertyGroup>
+                <IsTraversal>true</IsTraversal>
+              </PropertyGroup>
               <Import Project="$(MSBuildThisFileDirectory)output.before.proj" Condition="Exists('$(MSBuildThisFileDirectory)output.before.proj')" />
               <ItemGroup>
                 <ProjectReference Include="$(MSBuildThisFileDirectory)src/App1/App1.csproj" />
@@ -580,6 +601,9 @@ public sealed class DeltaBuildTests(ITestOutputHelper output) : IAsyncDisposable
         // All projects should be included because .github/workflows/ci.yml matches the ".github/**/*" trigger
         InlineSnapshot.Validate(content.Trim(), """
             <Project Sdk="Microsoft.Build.Traversal">
+              <PropertyGroup>
+                <IsTraversal>true</IsTraversal>
+              </PropertyGroup>
               <Import Project="$(MSBuildThisFileDirectory)output.before.proj" Condition="Exists('$(MSBuildThisFileDirectory)output.before.proj')" />
               <ItemGroup>
                 <ProjectReference Include="$(MSBuildThisFileDirectory)src/App1/App1.csproj" />
@@ -653,6 +677,9 @@ public sealed class DeltaBuildTests(ITestOutputHelper output) : IAsyncDisposable
         var content = await File.ReadAllTextAsync(outputPath, TestContext.Current.CancellationToken);
         InlineSnapshot.Validate(content.Trim(), """
             <Project Sdk="Microsoft.Build.Traversal">
+              <PropertyGroup>
+                <IsTraversal>true</IsTraversal>
+              </PropertyGroup>
               <Import Project="$(MSBuildThisFileDirectory)output.before.proj" Condition="Exists('$(MSBuildThisFileDirectory)output.before.proj')" />
               <ItemGroup>
                 <ProjectReference Include="$(MSBuildThisFileDirectory)src/Feature1/App1.csproj" />
@@ -707,6 +734,9 @@ public sealed class DeltaBuildTests(ITestOutputHelper output) : IAsyncDisposable
         var content = await File.ReadAllTextAsync(outputPath, TestContext.Current.CancellationToken);
         InlineSnapshot.Validate(content.Trim(), """
             <Project Sdk="Microsoft.Build.Traversal">
+              <PropertyGroup>
+                <IsTraversal>true</IsTraversal>
+              </PropertyGroup>
               <Import Project="$(MSBuildThisFileDirectory)output.before.proj" Condition="Exists('$(MSBuildThisFileDirectory)output.before.proj')" />
               <ItemGroup />
               <Import Project="$(MSBuildThisFileDirectory)output.after.proj" Condition="Exists('$(MSBuildThisFileDirectory)output.after.proj')" />
@@ -844,6 +874,9 @@ public sealed class DeltaBuildTests(ITestOutputHelper output) : IAsyncDisposable
         var content = await File.ReadAllTextAsync(outputPath, TestContext.Current.CancellationToken);
         InlineSnapshot.Validate(content.Trim(), """
             <Project Sdk="Microsoft.Build.Traversal">
+              <PropertyGroup>
+                <IsTraversal>true</IsTraversal>
+              </PropertyGroup>
               <Import Project="$(MSBuildThisFileDirectory)output.before.proj" Condition="Exists('$(MSBuildThisFileDirectory)output.before.proj')" />
               <ItemGroup>
                 <ProjectReference Include="$(MSBuildThisFileDirectory)src/App/App.csproj" />
@@ -901,6 +934,9 @@ public sealed class DeltaBuildTests(ITestOutputHelper output) : IAsyncDisposable
         var content = await File.ReadAllTextAsync(outputPath, TestContext.Current.CancellationToken);
         InlineSnapshot.Validate(content.Trim(), """
             <Project Sdk="Microsoft.Build.Traversal">
+              <PropertyGroup>
+                <IsTraversal>true</IsTraversal>
+              </PropertyGroup>
               <Import Project="$(MSBuildThisFileDirectory)custom.before.props" Condition="Exists('$(MSBuildThisFileDirectory)custom.before.props')" />
               <ItemGroup>
                 <ProjectReference Include="$(MSBuildThisFileDirectory)src/App/App.csproj" />
@@ -949,6 +985,9 @@ public sealed class DeltaBuildTests(ITestOutputHelper output) : IAsyncDisposable
         var content = await File.ReadAllTextAsync(outputPath, TestContext.Current.CancellationToken);
         InlineSnapshot.Validate(content.Trim(), """
             <Project Sdk="Microsoft.Build.Traversal">
+              <PropertyGroup>
+                <IsTraversal>true</IsTraversal>
+              </PropertyGroup>
               <Import Project="$(MSBuildThisFileDirectory)output.before.proj" Condition="Exists('$(MSBuildThisFileDirectory)output.before.proj')" />
               <ItemGroup>
                 <ProjectReference Include="$(MSBuildThisFileDirectory)src/App/App.csproj" />
@@ -998,6 +1037,9 @@ public sealed class DeltaBuildTests(ITestOutputHelper output) : IAsyncDisposable
         var content = await File.ReadAllTextAsync(outputPath, TestContext.Current.CancellationToken);
         InlineSnapshot.Validate(content.Trim(), """
             <Project Sdk="Microsoft.Build.Traversal/4.1.82">
+              <PropertyGroup>
+                <IsTraversal>true</IsTraversal>
+              </PropertyGroup>
               <Import Project="$(MSBuildThisFileDirectory)output.before.proj" Condition="Exists('$(MSBuildThisFileDirectory)output.before.proj')" />
               <ItemGroup>
                 <ProjectReference Include="$(MSBuildThisFileDirectory)src/App/App.csproj" />
@@ -1069,6 +1111,9 @@ public sealed class DeltaBuildTests(ITestOutputHelper output) : IAsyncDisposable
         var content = await File.ReadAllTextAsync(outputPath, TestContext.Current.CancellationToken);
         InlineSnapshot.Validate(content.Trim(), """
             <Project Sdk="Microsoft.Build.Traversal">
+              <PropertyGroup>
+                <IsTraversal>true</IsTraversal>
+              </PropertyGroup>
               <Import Project="$(MSBuildThisFileDirectory)output.before.proj" Condition="Exists('$(MSBuildThisFileDirectory)output.before.proj')" />
               <ItemGroup>
                 <ProjectReference Include="$(MSBuildThisFileDirectory)src/FSharpLib/FSharpLib.fsproj" />
@@ -1134,6 +1179,9 @@ public sealed class DeltaBuildTests(ITestOutputHelper output) : IAsyncDisposable
         // Both App and Lib should be in the output (App depends on Lib)
         InlineSnapshot.Validate(content.Trim(), """
             <Project Sdk="Microsoft.Build.Traversal">
+              <PropertyGroup>
+                <IsTraversal>true</IsTraversal>
+              </PropertyGroup>
               <Import Project="$(MSBuildThisFileDirectory)output.before.proj" Condition="Exists('$(MSBuildThisFileDirectory)output.before.proj')" />
               <ItemGroup>
                 <ProjectReference Include="$(MSBuildThisFileDirectory)src/App/App.csproj" />
@@ -1222,6 +1270,9 @@ public sealed class DeltaBuildTests(ITestOutputHelper output) : IAsyncDisposable
         // All three should be included: A changed, B depends on A, C depends on B
         InlineSnapshot.Validate(content.Trim(), """
             <Project Sdk="Microsoft.Build.Traversal">
+              <PropertyGroup>
+                <IsTraversal>true</IsTraversal>
+              </PropertyGroup>
               <Import Project="$(MSBuildThisFileDirectory)output.before.proj" Condition="Exists('$(MSBuildThisFileDirectory)output.before.proj')" />
               <ItemGroup>
                 <ProjectReference Include="$(MSBuildThisFileDirectory)src/A/A.csproj" />
@@ -2004,6 +2055,9 @@ public sealed class DeltaBuildTests(ITestOutputHelper output) : IAsyncDisposable
         // App should NOT be included because it doesn't depend on Lib
         InlineSnapshot.Validate(content.Trim(), """
             <Project Sdk="Microsoft.Build.Traversal">
+              <PropertyGroup>
+                <IsTraversal>true</IsTraversal>
+              </PropertyGroup>
               <Import Project="$(MSBuildThisFileDirectory)output.before.proj" Condition="Exists('$(MSBuildThisFileDirectory)output.before.proj')" />
               <ItemGroup>
                 <ProjectReference Include="$(MSBuildThisFileDirectory)src/Lib/Lib.csproj" />
@@ -2086,6 +2140,9 @@ public sealed class DeltaBuildTests(ITestOutputHelper output) : IAsyncDisposable
         // Both Lib and App should be included: Lib is directly affected, App depends on Lib
         InlineSnapshot.Validate(content.Trim(), """
             <Project Sdk="Microsoft.Build.Traversal">
+              <PropertyGroup>
+                <IsTraversal>true</IsTraversal>
+              </PropertyGroup>
               <Import Project="$(MSBuildThisFileDirectory)output.before.proj" Condition="Exists('$(MSBuildThisFileDirectory)output.before.proj')" />
               <ItemGroup>
                 <ProjectReference Include="$(MSBuildThisFileDirectory)src/App/App.csproj" />
@@ -2171,6 +2228,9 @@ public sealed class DeltaBuildTests(ITestOutputHelper output) : IAsyncDisposable
         // Unrelated should NOT be included
         InlineSnapshot.Validate(content.Trim(), """
             <Project Sdk="Microsoft.Build.Traversal">
+              <PropertyGroup>
+                <IsTraversal>true</IsTraversal>
+              </PropertyGroup>
               <Import Project="$(MSBuildThisFileDirectory)output.before.proj" Condition="Exists('$(MSBuildThisFileDirectory)output.before.proj')" />
               <ItemGroup>
                 <ProjectReference Include="$(MSBuildThisFileDirectory)src/Lib/Lib.csproj" />
@@ -2256,6 +2316,9 @@ public sealed class DeltaBuildTests(ITestOutputHelper output) : IAsyncDisposable
         // Unrelated should NOT be included
         InlineSnapshot.Validate(content.Trim(), """
             <Project Sdk="Microsoft.Build.Traversal">
+              <PropertyGroup>
+                <IsTraversal>true</IsTraversal>
+              </PropertyGroup>
               <Import Project="$(MSBuildThisFileDirectory)output.before.proj" Condition="Exists('$(MSBuildThisFileDirectory)output.before.proj')" />
               <ItemGroup>
                 <ProjectReference Include="$(MSBuildThisFileDirectory)src/App/App.csproj" />
@@ -2351,6 +2414,9 @@ public sealed class DeltaBuildTests(ITestOutputHelper output) : IAsyncDisposable
         // Unrelated should NOT be included
         InlineSnapshot.Validate(content.Trim(), """
             <Project Sdk="Microsoft.Build.Traversal">
+              <PropertyGroup>
+                <IsTraversal>true</IsTraversal>
+              </PropertyGroup>
               <Import Project="$(MSBuildThisFileDirectory)output.before.proj" Condition="Exists('$(MSBuildThisFileDirectory)output.before.proj')" />
               <ItemGroup>
                 <ProjectReference Include="$(MSBuildThisFileDirectory)src/App/App.csproj" />
@@ -2439,6 +2505,9 @@ public sealed class DeltaBuildTests(ITestOutputHelper output) : IAsyncDisposable
         // Unrelated should NOT be affected
         InlineSnapshot.Validate(content.Trim(), """
             <Project Sdk="Microsoft.Build.Traversal">
+              <PropertyGroup>
+                <IsTraversal>true</IsTraversal>
+              </PropertyGroup>
               <Import Project="$(MSBuildThisFileDirectory)output.before.proj" Condition="Exists('$(MSBuildThisFileDirectory)output.before.proj')" />
               <ItemGroup>
                 <ProjectReference Include="$(MSBuildThisFileDirectory)src/App/App.csproj" />
@@ -2504,6 +2573,9 @@ public sealed class DeltaBuildTests(ITestOutputHelper output) : IAsyncDisposable
         var content = await File.ReadAllTextAsync(outputPath, TestContext.Current.CancellationToken);
         InlineSnapshot.Validate(content.Trim(), """
             <Project Sdk="Microsoft.Build.Traversal">
+              <PropertyGroup>
+                <IsTraversal>true</IsTraversal>
+              </PropertyGroup>
               <Import Project="$(MSBuildThisFileDirectory)output.before.proj" Condition="Exists('$(MSBuildThisFileDirectory)output.before.proj')" />
               <ItemGroup>
                 <ProjectReference Include="$(MSBuildThisFileDirectory)src/App/App.csproj" />
@@ -2598,6 +2670,9 @@ public sealed class DeltaBuildTests(ITestOutputHelper output) : IAsyncDisposable
         // Both Lib and App should be affected (App depends on Lib), Unrelated should not
         InlineSnapshot.Validate(content.Trim(), """
             <Project Sdk="Microsoft.Build.Traversal">
+              <PropertyGroup>
+                <IsTraversal>true</IsTraversal>
+              </PropertyGroup>
               <Import Project="$(MSBuildThisFileDirectory)output.before.proj" Condition="Exists('$(MSBuildThisFileDirectory)output.before.proj')" />
               <ItemGroup>
                 <ProjectReference Include="$(MSBuildThisFileDirectory)src/App/App.csproj" />
@@ -2690,6 +2765,9 @@ public sealed class DeltaBuildTests(ITestOutputHelper output) : IAsyncDisposable
         // Only App should be affected (it imports Shared.props), Other should NOT
         InlineSnapshot.Validate(content.Trim(), """
             <Project Sdk="Microsoft.Build.Traversal">
+              <PropertyGroup>
+                <IsTraversal>true</IsTraversal>
+              </PropertyGroup>
               <Import Project="$(MSBuildThisFileDirectory)output.before.proj" Condition="Exists('$(MSBuildThisFileDirectory)output.before.proj')" />
               <ItemGroup>
                 <ProjectReference Include="$(MSBuildThisFileDirectory)src/App/App.csproj" />
@@ -2767,6 +2845,9 @@ public sealed class DeltaBuildTests(ITestOutputHelper output) : IAsyncDisposable
         var content = await File.ReadAllTextAsync(outputPath, TestContext.Current.CancellationToken);
         InlineSnapshot.Validate(content.Trim(), """
             <Project Sdk="Microsoft.Build.Traversal">
+              <PropertyGroup>
+                <IsTraversal>true</IsTraversal>
+              </PropertyGroup>
               <Import Project="$(MSBuildThisFileDirectory)output.before.proj" Condition="Exists('$(MSBuildThisFileDirectory)output.before.proj')" />
               <ItemGroup>
                 <ProjectReference Include="$(MSBuildThisFileDirectory)src/App1/App1.csproj" />
@@ -2839,6 +2920,9 @@ public sealed class DeltaBuildTests(ITestOutputHelper output) : IAsyncDisposable
         var content = await File.ReadAllTextAsync(outputPath, TestContext.Current.CancellationToken);
         InlineSnapshot.Validate(content.Trim(), """
             <Project Sdk="Microsoft.Build.Traversal">
+              <PropertyGroup>
+                <IsTraversal>true</IsTraversal>
+              </PropertyGroup>
               <Import Project="$(MSBuildThisFileDirectory)output.before.proj" Condition="Exists('$(MSBuildThisFileDirectory)output.before.proj')" />
               <ItemGroup>
                 <ProjectReference Include="$(MSBuildThisFileDirectory)src/App/App.csproj" />
@@ -2923,6 +3007,9 @@ public sealed class DeltaBuildTests(ITestOutputHelper output) : IAsyncDisposable
         var content = await File.ReadAllTextAsync(outputPath, TestContext.Current.CancellationToken);
         InlineSnapshot.Validate(content.Trim(), """
             <Project Sdk="Microsoft.Build.Traversal">
+              <PropertyGroup>
+                <IsTraversal>true</IsTraversal>
+              </PropertyGroup>
               <Import Project="$(MSBuildThisFileDirectory)output.before.proj" Condition="Exists('$(MSBuildThisFileDirectory)output.before.proj')" />
               <ItemGroup>
                 <ProjectReference Include="$(MSBuildThisFileDirectory)src/App1/App1.csproj" />
@@ -3024,6 +3111,9 @@ public sealed class DeltaBuildTests(ITestOutputHelper output) : IAsyncDisposable
         // Both Lib and App should be affected (App depends on Lib), Unrelated should not
         InlineSnapshot.Validate(content.Trim(), """
             <Project Sdk="Microsoft.Build.Traversal">
+              <PropertyGroup>
+                <IsTraversal>true</IsTraversal>
+              </PropertyGroup>
               <Import Project="$(MSBuildThisFileDirectory)output.before.proj" Condition="Exists('$(MSBuildThisFileDirectory)output.before.proj')" />
               <ItemGroup>
                 <ProjectReference Include="$(MSBuildThisFileDirectory)src/App/App.csproj" />
@@ -3112,6 +3202,9 @@ public sealed class DeltaBuildTests(ITestOutputHelper output) : IAsyncDisposable
         // Only src/ projects should be affected, NOT tests/proj1.tests
         InlineSnapshot.Validate(content.Trim(), """
             <Project Sdk="Microsoft.Build.Traversal">
+              <PropertyGroup>
+                <IsTraversal>true</IsTraversal>
+              </PropertyGroup>
               <Import Project="$(MSBuildThisFileDirectory)output.before.proj" Condition="Exists('$(MSBuildThisFileDirectory)output.before.proj')" />
               <ItemGroup>
                 <ProjectReference Include="$(MSBuildThisFileDirectory)src/proj1/proj1.csproj" />
@@ -3188,6 +3281,9 @@ public sealed class DeltaBuildTests(ITestOutputHelper output) : IAsyncDisposable
         // All projects should be affected because root-level global.json affects everything
         InlineSnapshot.Validate(content.Trim(), """
             <Project Sdk="Microsoft.Build.Traversal">
+              <PropertyGroup>
+                <IsTraversal>true</IsTraversal>
+              </PropertyGroup>
               <Import Project="$(MSBuildThisFileDirectory)output.before.proj" Condition="Exists('$(MSBuildThisFileDirectory)output.before.proj')" />
               <ItemGroup>
                 <ProjectReference Include="$(MSBuildThisFileDirectory)src/proj1/proj1.csproj" />
@@ -3262,6 +3358,9 @@ public sealed class DeltaBuildTests(ITestOutputHelper output) : IAsyncDisposable
         // Only src/proj1 should be affected, NOT tests/proj1.tests
         InlineSnapshot.Validate(content.Trim(), """
             <Project Sdk="Microsoft.Build.Traversal">
+              <PropertyGroup>
+                <IsTraversal>true</IsTraversal>
+              </PropertyGroup>
               <Import Project="$(MSBuildThisFileDirectory)output.before.proj" Condition="Exists('$(MSBuildThisFileDirectory)output.before.proj')" />
               <ItemGroup>
                 <ProjectReference Include="$(MSBuildThisFileDirectory)src/proj1/proj1.csproj" />
@@ -3330,6 +3429,9 @@ public sealed class DeltaBuildTests(ITestOutputHelper output) : IAsyncDisposable
         // Only src/proj1 should be affected (build.lock is in src/)
         InlineSnapshot.Validate(content.Trim(), """
             <Project Sdk="Microsoft.Build.Traversal">
+              <PropertyGroup>
+                <IsTraversal>true</IsTraversal>
+              </PropertyGroup>
               <Import Project="$(MSBuildThisFileDirectory)output.before.proj" Condition="Exists('$(MSBuildThisFileDirectory)output.before.proj')" />
               <ItemGroup>
                 <ProjectReference Include="$(MSBuildThisFileDirectory)src/proj1/proj1.csproj" />
@@ -3400,6 +3502,9 @@ public sealed class DeltaBuildTests(ITestOutputHelper output) : IAsyncDisposable
         // Only src/proj1 should be affected, NOT tests/proj1.tests
         InlineSnapshot.Validate(content.Trim(), """
             <Project Sdk="Microsoft.Build.Traversal">
+              <PropertyGroup>
+                <IsTraversal>true</IsTraversal>
+              </PropertyGroup>
               <Import Project="$(MSBuildThisFileDirectory)output.before.proj" Condition="Exists('$(MSBuildThisFileDirectory)output.before.proj')" />
               <ItemGroup>
                 <ProjectReference Include="$(MSBuildThisFileDirectory)src/proj1/proj1.csproj" />
@@ -3478,6 +3583,9 @@ public sealed class DeltaBuildTests(ITestOutputHelper output) : IAsyncDisposable
         // Only proj1 should be affected because its .editorconfig is tracked as an EditorConfigFiles item
         InlineSnapshot.Validate(content.Trim(), """
             <Project Sdk="Microsoft.Build.Traversal">
+              <PropertyGroup>
+                <IsTraversal>true</IsTraversal>
+              </PropertyGroup>
               <Import Project="$(MSBuildThisFileDirectory)output.before.proj" Condition="Exists('$(MSBuildThisFileDirectory)output.before.proj')" />
               <ItemGroup>
                 <ProjectReference Include="$(MSBuildThisFileDirectory)src/proj1/proj1.csproj" />
@@ -3555,6 +3663,9 @@ public sealed class DeltaBuildTests(ITestOutputHelper output) : IAsyncDisposable
         // Only proj1 should be affected because its .globalconfig is tracked as a GlobalAnalyzerConfigFiles item
         InlineSnapshot.Validate(content.Trim(), """
             <Project Sdk="Microsoft.Build.Traversal">
+              <PropertyGroup>
+                <IsTraversal>true</IsTraversal>
+              </PropertyGroup>
               <Import Project="$(MSBuildThisFileDirectory)output.before.proj" Condition="Exists('$(MSBuildThisFileDirectory)output.before.proj')" />
               <ItemGroup>
                 <ProjectReference Include="$(MSBuildThisFileDirectory)src/proj1/proj1.csproj" />
@@ -3624,6 +3735,9 @@ public sealed class DeltaBuildTests(ITestOutputHelper output) : IAsyncDisposable
         // Only proj1 should be affected because only its source file was modified
         InlineSnapshot.Validate(content.Trim(), """
             <Project Sdk="Microsoft.Build.Traversal">
+              <PropertyGroup>
+                <IsTraversal>true</IsTraversal>
+              </PropertyGroup>
               <Import Project="$(MSBuildThisFileDirectory)output.before.proj" Condition="Exists('$(MSBuildThisFileDirectory)output.before.proj')" />
               <ItemGroup>
                 <ProjectReference Include="$(MSBuildThisFileDirectory)src/proj1/proj1.csproj" />
@@ -3693,6 +3807,9 @@ public sealed class DeltaBuildTests(ITestOutputHelper output) : IAsyncDisposable
         // Only proj2 should be affected because the new untracked file is in its directory
         InlineSnapshot.Validate(content.Trim(), """
             <Project Sdk="Microsoft.Build.Traversal">
+              <PropertyGroup>
+                <IsTraversal>true</IsTraversal>
+              </PropertyGroup>
               <Import Project="$(MSBuildThisFileDirectory)output.before.proj" Condition="Exists('$(MSBuildThisFileDirectory)output.before.proj')" />
               <ItemGroup>
                 <ProjectReference Include="$(MSBuildThisFileDirectory)src/proj2/proj2.csproj" />
@@ -3746,6 +3863,9 @@ public sealed class DeltaBuildTests(ITestOutputHelper output) : IAsyncDisposable
         // No projects should be affected
         InlineSnapshot.Validate(content.Trim(), """
             <Project Sdk="Microsoft.Build.Traversal">
+              <PropertyGroup>
+                <IsTraversal>true</IsTraversal>
+              </PropertyGroup>
               <Import Project="$(MSBuildThisFileDirectory)output.before.proj" Condition="Exists('$(MSBuildThisFileDirectory)output.before.proj')" />
               <ItemGroup />
               <Import Project="$(MSBuildThisFileDirectory)output.after.proj" Condition="Exists('$(MSBuildThisFileDirectory)output.after.proj')" />
@@ -3912,6 +4032,9 @@ public sealed class DeltaBuildTests(ITestOutputHelper output) : IAsyncDisposable
         var content = await File.ReadAllTextAsync(outputPath, TestContext.Current.CancellationToken);
         InlineSnapshot.Validate(content.Trim(), """
             <Project Sdk="Microsoft.Build.Traversal">
+              <PropertyGroup>
+                <IsTraversal>true</IsTraversal>
+              </PropertyGroup>
               <Import Project="$(MSBuildThisFileDirectory)output.before.proj" Condition="Exists('$(MSBuildThisFileDirectory)output.before.proj')" />
               <ItemGroup>
                 <ProjectReference Include="$(MSBuildThisFileDirectory)src/App1/App1.csproj" />
@@ -3997,6 +4120,9 @@ public sealed class DeltaBuildTests(ITestOutputHelper output) : IAsyncDisposable
         // Excluded.csproj should NOT appear because it was removed from ProjectReference
         InlineSnapshot.Validate(content.Trim(), """
             <Project Sdk="Microsoft.Build.Traversal">
+              <PropertyGroup>
+                <IsTraversal>true</IsTraversal>
+              </PropertyGroup>
               <Import Project="$(MSBuildThisFileDirectory)output.before.proj" Condition="Exists('$(MSBuildThisFileDirectory)output.before.proj')" />
               <ItemGroup>
                 <ProjectReference Include="$(MSBuildThisFileDirectory)src/App1/App1.csproj" />
@@ -4077,6 +4203,9 @@ public sealed class DeltaBuildTests(ITestOutputHelper output) : IAsyncDisposable
         var content = await File.ReadAllTextAsync(outputPath, TestContext.Current.CancellationToken);
         InlineSnapshot.Validate(content.Trim(), """
             <Project Sdk="Microsoft.Build.Traversal">
+              <PropertyGroup>
+                <IsTraversal>true</IsTraversal>
+              </PropertyGroup>
               <Import Project="$(MSBuildThisFileDirectory)output.before.proj" Condition="Exists('$(MSBuildThisFileDirectory)output.before.proj')" />
               <ItemGroup>
                 <ProjectReference Include="$(MSBuildThisFileDirectory)src/B/B.csproj" />
@@ -4157,6 +4286,9 @@ public sealed class DeltaBuildTests(ITestOutputHelper output) : IAsyncDisposable
         var content = await File.ReadAllTextAsync(outputPath, TestContext.Current.CancellationToken);
         InlineSnapshot.Validate(content.Trim(), """
             <Project Sdk="Microsoft.Build.Traversal">
+              <PropertyGroup>
+                <IsTraversal>true</IsTraversal>
+              </PropertyGroup>
               <Import Project="$(MSBuildThisFileDirectory)output.before.proj" Condition="Exists('$(MSBuildThisFileDirectory)output.before.proj')" />
               <ItemGroup>
                 <ProjectReference Include="$(MSBuildThisFileDirectory)src/B/B.csproj" />
@@ -4240,6 +4372,9 @@ public sealed class DeltaBuildTests(ITestOutputHelper output) : IAsyncDisposable
         var content = await File.ReadAllTextAsync(outputPath, TestContext.Current.CancellationToken);
         InlineSnapshot.Validate(content.Trim(), """
             <Project Sdk="Microsoft.Build.Traversal">
+              <PropertyGroup>
+                <IsTraversal>true</IsTraversal>
+              </PropertyGroup>
               <Import Project="$(MSBuildThisFileDirectory)output.before.proj" Condition="Exists('$(MSBuildThisFileDirectory)output.before.proj')" />
               <ItemGroup>
                 <ProjectReference Include="$(MSBuildThisFileDirectory)src/App/App.csproj" />
