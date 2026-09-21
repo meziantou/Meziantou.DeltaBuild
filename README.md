@@ -168,6 +168,7 @@ DeltaBuild tracks the following MSBuild item types as owned files for each proje
 - `Page`, `ApplicationDefinition`, `Resource` — WPF/XAML items
 - `TypeScriptCompile` — TypeScript files
 - `Protobuf` — `.proto` files (gRPC / protobuf tooling)
+- `MauiXaml`, `MauiCss`, `MauiImage`, `MauiIcon`, `MauiSplashScreen`, `MauiFont`, `MauiAsset` — .NET MAUI items (MAUI removes `**/*.xaml` from the default `None` items, so `MauiXaml` is the only item type tracking them)
 - **Import paths** — `.props`, `.targets`, and other imported MSBuild files (via `ProjectInstance.ImportPaths`)
 - **Project file itself** — The `.csproj`/`.fsproj`/`.vbproj` file
 

@@ -33,6 +33,13 @@ internal static class DeltaBuildItems
         "Resource",
         "TypeScriptCompile",
         "Protobuf",
+        "MauiXaml",
+        "MauiCss",
+        "MauiImage",
+        "MauiIcon",
+        "MauiSplashScreen",
+        "MauiFont",
+        "MauiAsset",
     ];
 
     /// <summary>
@@ -51,6 +58,13 @@ internal static class DeltaBuildItems
         "Resource",
         "TypeScriptCompile",
         "Protobuf",
+        "MauiXaml",
+        "MauiCss",
+        "MauiImage",
+        "MauiIcon",
+        "MauiSplashScreen",
+        "MauiFont",
+        "MauiAsset",
     ];
 
     /// <summary>

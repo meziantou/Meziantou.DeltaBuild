@@ -4909,4 +4909,93 @@ public sealed class DeltaBuildTests(ITestOutputHelper output) : IAsyncDisposable
             </Project>
             """);
     }
+
+    [Theory]
+    [InlineData("MSBuild")]
+    [InlineData("RoslynWorkspace")]
+    [InlineData("StaticGraph")]
+    public async Task MauiXamlItem_TrackedAsOwnedFile(string engine)
+    {
+        var repo = await CreateRepositoryAsync();
+
+        // Commit 1: proj1 owns a XAML file outside its folder through the built-in MauiXaml item type.
+        // MAUI removes **/*.xaml from the default None items, so MauiXaml is the only item type tracking them.
+        repo.CreateCommit(
+            ("global.json", """
+                {
+                  "msbuild-sdks": {
+                    "Microsoft.Build.Traversal": "4.1.82"
+                  }
+                }
+                """),
+            ("shared/Styles.xaml", """
+                <Style xmlns="http://schemas.microsoft.com/dotnet/2021/maui" TargetType="Label" />
+                """),
+            ("src/proj1/proj1.csproj", """
+                <Project Sdk="Microsoft.NET.Sdk">
+                  <PropertyGroup>
+                    <TargetFramework>net10.0</TargetFramework>
+                  </PropertyGroup>
+                  <ItemGroup>
+                    <MauiXaml Include="../../shared/Styles.xaml" />
+                  </ItemGroup>
+                </Project>
+                """),
+            ("src/proj1/Class1.cs", """
+                namespace Proj1;
+                public class Class1 { }
+                """),
+            ("src/proj2/proj2.csproj", """
+                <Project Sdk="Microsoft.NET.Sdk">
+                  <PropertyGroup>
+                    <TargetFramework>net10.0</TargetFramework>
+                  </PropertyGroup>
+                </Project>
+                """),
+            ("src/proj2/Class2.cs", """
+                namespace Proj2;
+                public class Class2 { }
+                """),
+            ("dirs.proj", """
+                <Project Sdk="Microsoft.Build.Traversal">
+                  <ItemGroup>
+                    <ProjectReference Include="src/proj1/proj1.csproj" />
+                    <ProjectReference Include="src/proj2/proj2.csproj" />
+                  </ItemGroup>
+                </Project>
+                """)
+        );
+
+        // Commit 2: Change the XAML file
+        repo.CreateCommit(
+            ("shared/Styles.xaml", """
+                <Style xmlns="http://schemas.microsoft.com/dotnet/2021/maui" TargetType="Button" />
+                """)
+        );
+
+        var outputPath = repo.RepositoryPath / "output.proj";
+        await RunTool(
+            "generate",
+            "--input", repo.RepositoryPath / "dirs.proj",
+            "--output", outputPath,
+            "--repository", repo.RepositoryPath,
+            "--base-commit", repo.Commits[^2],
+            "--head-commit", repo.Commits[^1],
+            "--engine", engine,
+            "--hierarchical-rebuild-trigger", "nonexistent-pattern-to-disable-defaults");
+
+        var content = await File.ReadAllTextAsync(outputPath, TestContext.Current.CancellationToken);
+        InlineSnapshot.Validate(content.Trim(), """
+            <Project Sdk="Microsoft.Build.Traversal">
+              <PropertyGroup>
+                <IsTraversal>true</IsTraversal>
+              </PropertyGroup>
+              <Import Project="$(MSBuildThisFileDirectory)output.before.proj" Condition="Exists('$(MSBuildThisFileDirectory)output.before.proj')" />
+              <ItemGroup>
+                <ProjectReference Include="$(MSBuildThisFileDirectory)src/proj1/proj1.csproj" />
+              </ItemGroup>
+              <Import Project="$(MSBuildThisFileDirectory)output.after.proj" Condition="Exists('$(MSBuildThisFileDirectory)output.after.proj')" />
+            </Project>
+            """);
+    }
 }
