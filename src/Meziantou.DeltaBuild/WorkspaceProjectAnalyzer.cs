@@ -164,9 +164,10 @@ internal static class WorkspaceProjectAnalyzer
                 }
 
                 // Also include non-source items that Roslyn doesn't track (Content, None, EmbeddedResource, etc.)
+                var fileItemTypes = DeltaBuildItems.GetItemTypes(projectInstance, DeltaBuildItems.DefaultNonSourceItemTypes);
                 foreach (var item in projectInstance.Items)
                 {
-                    if (NonSourceFileItemTypes.Contains(item.ItemType))
+                    if (fileItemTypes.Contains(item.ItemType))
                     {
                         var fullPath = item.GetMetadataValue("FullPath");
                         if (!string.IsNullOrEmpty(fullPath))
@@ -175,6 +176,13 @@ internal static class WorkspaceProjectAnalyzer
                         }
                     }
                 }
+
+                DeltaBuildItems.AddIncludedFiles(projectInstance, ownedFiles);
+
+                // Remove the files excluded by DeltaBuildExcludeFile
+                var excludedFiles = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+                DeltaBuildItems.AddExcludedFiles(projectInstance, excludedFiles);
+                ownedFiles.ExceptWith(excludedFiles);
             }
             catch (Exception ex)
             {
@@ -193,23 +201,6 @@ internal static class WorkspaceProjectAnalyzer
 
         return result;
     }
-
-    /// <summary>
-    /// Non-source item types that Roslyn doesn't track via project.Documents.
-    /// These are tracked via MSBuild's ProjectInstance to ensure complete coverage.
-    /// </summary>
-    private static readonly HashSet<string> NonSourceFileItemTypes = new(StringComparer.OrdinalIgnoreCase)
-    {
-        "Content",
-        "None",
-        "EmbeddedResource",
-        "EditorConfigFiles",
-        "GlobalAnalyzerConfigFiles",
-        "Page",
-        "ApplicationDefinition",
-        "Resource",
-        "TypeScriptCompile",
-    };
 
     private static string NormalizePath(string path)
     {
