@@ -4445,4 +4445,468 @@ public sealed class DeltaBuildTests(ITestOutputHelper output) : IAsyncDisposable
         Assert.NotEqual(0, result.ExitCode);
         Assert.Contains("not present in the input project set", result.Stderr + result.Stdout);
     }
+    [Theory]
+    [InlineData("MSBuild")]
+    [InlineData("RoslynWorkspace")]
+    [InlineData("StaticGraph")]
+    public async Task DeltaBuildItems_CustomItemType_TrackedAsOwnedFile(string engine)
+    {
+        var repo = await CreateRepositoryAsync();
+
+        // Commit 1: proj1 declares a custom item type through DeltaBuildItems, proj2 does not
+        // The referenced file lives outside the project folder so the default None glob doesn't own it
+        repo.CreateCommit(
+            ("global.json", """
+                {
+                  "msbuild-sdks": {
+                    "Microsoft.Build.Traversal": "4.1.82"
+                  }
+                }
+                """),
+            ("shared/schema.graphql", """
+                type Query { value: String }
+                """),
+            ("src/proj1/proj1.csproj", """
+                <Project Sdk="Microsoft.NET.Sdk">
+                  <PropertyGroup>
+                    <TargetFramework>net10.0</TargetFramework>
+                  </PropertyGroup>
+                  <ItemGroup>
+                    <DeltaBuildItems Include="MyCustomFiles" />
+                    <MyCustomFiles Include="../../shared/schema.graphql" />
+                  </ItemGroup>
+                </Project>
+                """),
+            ("src/proj1/Class1.cs", """
+                namespace Proj1;
+                public class Class1 { }
+                """),
+            ("src/proj2/proj2.csproj", """
+                <Project Sdk="Microsoft.NET.Sdk">
+                  <PropertyGroup>
+                    <TargetFramework>net10.0</TargetFramework>
+                  </PropertyGroup>
+                </Project>
+                """),
+            ("src/proj2/Class2.cs", """
+                namespace Proj2;
+                public class Class2 { }
+                """),
+            ("dirs.proj", """
+                <Project Sdk="Microsoft.Build.Traversal">
+                  <ItemGroup>
+                    <ProjectReference Include="src/proj1/proj1.csproj" />
+                    <ProjectReference Include="src/proj2/proj2.csproj" />
+                  </ItemGroup>
+                </Project>
+                """)
+        );
+
+        // Commit 2: Change the file owned through the custom item type
+        repo.CreateCommit(
+            ("shared/schema.graphql", """
+                type Query { value: String, other: Int }
+                """)
+        );
+
+        var outputPath = repo.RepositoryPath / "output.proj";
+        await RunTool(
+            "generate",
+            "--input", repo.RepositoryPath / "dirs.proj",
+            "--output", outputPath,
+            "--repository", repo.RepositoryPath,
+            "--base-commit", repo.Commits[^2],
+            "--head-commit", repo.Commits[^1],
+            "--engine", engine,
+            "--hierarchical-rebuild-trigger", "nonexistent-pattern-to-disable-defaults");
+
+        var content = await File.ReadAllTextAsync(outputPath, TestContext.Current.CancellationToken);
+        InlineSnapshot.Validate(content.Trim(), """
+            <Project Sdk="Microsoft.Build.Traversal">
+              <PropertyGroup>
+                <IsTraversal>true</IsTraversal>
+              </PropertyGroup>
+              <Import Project="$(MSBuildThisFileDirectory)output.before.proj" Condition="Exists('$(MSBuildThisFileDirectory)output.before.proj')" />
+              <ItemGroup>
+                <ProjectReference Include="$(MSBuildThisFileDirectory)src/proj1/proj1.csproj" />
+              </ItemGroup>
+              <Import Project="$(MSBuildThisFileDirectory)output.after.proj" Condition="Exists('$(MSBuildThisFileDirectory)output.after.proj')" />
+            </Project>
+            """);
+    }
+
+    [Fact]
+    public async Task DeltaBuildItems_CustomItemTypeNotDeclared_FileNotTracked()
+    {
+        var repo = await CreateRepositoryAsync();
+
+        // Commit 1: Same as DeltaBuildItems_CustomItemType_TrackedAsOwnedFile but without DeltaBuildItems
+        repo.CreateCommit(
+            ("shared/schema.graphql", """
+                type Query { value: String }
+                """),
+            ("src/proj1/proj1.csproj", """
+                <Project Sdk="Microsoft.NET.Sdk">
+                  <PropertyGroup>
+                    <TargetFramework>net10.0</TargetFramework>
+                  </PropertyGroup>
+                  <ItemGroup>
+                    <MyCustomFiles Include="../../shared/schema.graphql" />
+                  </ItemGroup>
+                </Project>
+                """),
+            ("src/proj1/Class1.cs", """
+                namespace Proj1;
+                public class Class1 { }
+                """),
+            ("dirs.proj", """
+                <Project Sdk="Microsoft.Build.Traversal">
+                  <ItemGroup>
+                    <ProjectReference Include="src/proj1/proj1.csproj" />
+                  </ItemGroup>
+                </Project>
+                """)
+        );
+
+        // Commit 2: Change the file referenced by the undeclared item type
+        repo.CreateCommit(
+            ("shared/schema.graphql", """
+                type Query { value: String, other: Int }
+                """)
+        );
+
+        var outputPath = repo.RepositoryPath / "output.proj";
+        await RunTool(
+            "generate",
+            "--input", repo.RepositoryPath / "dirs.proj",
+            "--output", outputPath,
+            "--repository", repo.RepositoryPath,
+            "--base-commit", repo.Commits[^2],
+            "--head-commit", repo.Commits[^1],
+            "--hierarchical-rebuild-trigger", "nonexistent-pattern-to-disable-defaults");
+
+        var content = await File.ReadAllTextAsync(outputPath, TestContext.Current.CancellationToken);
+        InlineSnapshot.Validate(content.Trim(), """
+            <Project Sdk="Microsoft.Build.Traversal">
+              <PropertyGroup>
+                <IsTraversal>true</IsTraversal>
+              </PropertyGroup>
+              <Import Project="$(MSBuildThisFileDirectory)output.before.proj" Condition="Exists('$(MSBuildThisFileDirectory)output.before.proj')" />
+              <ItemGroup />
+              <Import Project="$(MSBuildThisFileDirectory)output.after.proj" Condition="Exists('$(MSBuildThisFileDirectory)output.after.proj')" />
+            </Project>
+            """);
+    }
+
+    [Theory]
+    [InlineData("MSBuild")]
+    [InlineData("RoslynWorkspace")]
+    [InlineData("StaticGraph")]
+    public async Task DeltaBuildIncludeFile_TrackedAsOwnedFile(string engine)
+    {
+        var repo = await CreateRepositoryAsync();
+
+        // Commit 1: proj1 declares an extra owned file outside its own folder
+        repo.CreateCommit(
+            ("global.json", """
+                {
+                  "msbuild-sdks": {
+                    "Microsoft.Build.Traversal": "4.1.82"
+                  }
+                }
+                """),
+            ("shared/notes.txt", """
+                initial
+                """),
+            ("src/proj1/proj1.csproj", """
+                <Project Sdk="Microsoft.NET.Sdk">
+                  <PropertyGroup>
+                    <TargetFramework>net10.0</TargetFramework>
+                  </PropertyGroup>
+                  <ItemGroup>
+                    <DeltaBuildIncludeFile Include="../../shared/notes.txt" />
+                  </ItemGroup>
+                </Project>
+                """),
+            ("src/proj1/Class1.cs", """
+                namespace Proj1;
+                public class Class1 { }
+                """),
+            ("src/proj2/proj2.csproj", """
+                <Project Sdk="Microsoft.NET.Sdk">
+                  <PropertyGroup>
+                    <TargetFramework>net10.0</TargetFramework>
+                  </PropertyGroup>
+                </Project>
+                """),
+            ("src/proj2/Class2.cs", """
+                namespace Proj2;
+                public class Class2 { }
+                """),
+            ("dirs.proj", """
+                <Project Sdk="Microsoft.Build.Traversal">
+                  <ItemGroup>
+                    <ProjectReference Include="src/proj1/proj1.csproj" />
+                    <ProjectReference Include="src/proj2/proj2.csproj" />
+                  </ItemGroup>
+                </Project>
+                """)
+        );
+
+        // Commit 2: Change the explicitly declared file
+        repo.CreateCommit(
+            ("shared/notes.txt", """
+                updated
+                """)
+        );
+
+        var outputPath = repo.RepositoryPath / "output.proj";
+        await RunTool(
+            "generate",
+            "--input", repo.RepositoryPath / "dirs.proj",
+            "--output", outputPath,
+            "--repository", repo.RepositoryPath,
+            "--base-commit", repo.Commits[^2],
+            "--head-commit", repo.Commits[^1],
+            "--engine", engine,
+            "--hierarchical-rebuild-trigger", "nonexistent-pattern-to-disable-defaults");
+
+        var content = await File.ReadAllTextAsync(outputPath, TestContext.Current.CancellationToken);
+        InlineSnapshot.Validate(content.Trim(), """
+            <Project Sdk="Microsoft.Build.Traversal">
+              <PropertyGroup>
+                <IsTraversal>true</IsTraversal>
+              </PropertyGroup>
+              <Import Project="$(MSBuildThisFileDirectory)output.before.proj" Condition="Exists('$(MSBuildThisFileDirectory)output.before.proj')" />
+              <ItemGroup>
+                <ProjectReference Include="$(MSBuildThisFileDirectory)src/proj1/proj1.csproj" />
+              </ItemGroup>
+              <Import Project="$(MSBuildThisFileDirectory)output.after.proj" Condition="Exists('$(MSBuildThisFileDirectory)output.after.proj')" />
+            </Project>
+            """);
+    }
+
+    [Fact]
+    public async Task DeltaBuildItemsIncludeDefaults_False_DefaultItemTypesNotTracked()
+    {
+        var repo = await CreateRepositoryAsync();
+
+        // Commit 1: The project opts out of the built-in item types, so Program.cs is not an owned file
+        repo.CreateCommit(
+            ("src/App/App.csproj", """
+                <Project Sdk="Microsoft.NET.Sdk">
+                  <PropertyGroup>
+                    <TargetFramework>net10.0</TargetFramework>
+                    <OutputType>Exe</OutputType>
+                    <DeltaBuildItemsIncludeDefaults>false</DeltaBuildItemsIncludeDefaults>
+                  </PropertyGroup>
+                </Project>
+                """),
+            ("src/App/Program.cs", """
+                Console.WriteLine("Hello");
+                """),
+            ("dirs.proj", """
+                <Project Sdk="Microsoft.Build.Traversal">
+                  <ItemGroup>
+                    <ProjectReference Include="src/App/App.csproj" />
+                  </ItemGroup>
+                </Project>
+                """)
+        );
+
+        // Commit 2: Modify the source file
+        repo.CreateCommit(
+            ("src/App/Program.cs", """
+                Console.WriteLine("Hello, World!");
+                """)
+        );
+
+        var outputPath = repo.RepositoryPath / "output.proj";
+        await RunTool(
+            "generate",
+            "--input", repo.RepositoryPath / "dirs.proj",
+            "--output", outputPath,
+            "--repository", repo.RepositoryPath,
+            "--base-commit", repo.Commits[^2],
+            "--head-commit", repo.Commits[^1],
+            "--hierarchical-rebuild-trigger", "nonexistent-pattern-to-disable-defaults");
+
+        var content = await File.ReadAllTextAsync(outputPath, TestContext.Current.CancellationToken);
+        InlineSnapshot.Validate(content.Trim(), """
+            <Project Sdk="Microsoft.Build.Traversal">
+              <PropertyGroup>
+                <IsTraversal>true</IsTraversal>
+              </PropertyGroup>
+              <Import Project="$(MSBuildThisFileDirectory)output.before.proj" Condition="Exists('$(MSBuildThisFileDirectory)output.before.proj')" />
+              <ItemGroup />
+              <Import Project="$(MSBuildThisFileDirectory)output.after.proj" Condition="Exists('$(MSBuildThisFileDirectory)output.after.proj')" />
+            </Project>
+            """);
+    }
+
+    [Theory]
+    [InlineData("MSBuild")]
+    [InlineData("RoslynWorkspace")]
+    [InlineData("StaticGraph")]
+    public async Task DeltaBuildExcludeFile_NotTrackedAsOwnedFile(string engine)
+    {
+        var repo = await CreateRepositoryAsync();
+
+        // Commit 1: proj1 excludes a source file that MSBuild and Roslyn would otherwise own
+        repo.CreateCommit(
+            ("global.json", """
+                {
+                  "msbuild-sdks": {
+                    "Microsoft.Build.Traversal": "4.1.82"
+                  }
+                }
+                """),
+            ("src/proj1/proj1.csproj", """
+                <Project Sdk="Microsoft.NET.Sdk">
+                  <PropertyGroup>
+                    <TargetFramework>net10.0</TargetFramework>
+                  </PropertyGroup>
+                  <ItemGroup>
+                    <DeltaBuildExcludeFile Include="Generated.cs" />
+                  </ItemGroup>
+                </Project>
+                """),
+            ("src/proj1/Class1.cs", """
+                namespace Proj1;
+                public class Class1 { }
+                """),
+            ("src/proj1/Generated.cs", """
+                namespace Proj1;
+                public partial class Generated { }
+                """),
+            ("dirs.proj", """
+                <Project Sdk="Microsoft.Build.Traversal">
+                  <ItemGroup>
+                    <ProjectReference Include="src/proj1/proj1.csproj" />
+                  </ItemGroup>
+                </Project>
+                """)
+        );
+
+        // Commit 2: Change the excluded file
+        repo.CreateCommit(
+            ("src/proj1/Generated.cs", """
+                namespace Proj1;
+                public partial class Generated { public int Value => 1; }
+                """)
+        );
+
+        var outputPath = repo.RepositoryPath / "output.proj";
+        await RunTool(
+            "generate",
+            "--input", repo.RepositoryPath / "dirs.proj",
+            "--output", outputPath,
+            "--repository", repo.RepositoryPath,
+            "--base-commit", repo.Commits[^2],
+            "--head-commit", repo.Commits[^1],
+            "--engine", engine,
+            "--hierarchical-rebuild-trigger", "nonexistent-pattern-to-disable-defaults");
+
+        var content = await File.ReadAllTextAsync(outputPath, TestContext.Current.CancellationToken);
+        InlineSnapshot.Validate(content.Trim(), """
+            <Project Sdk="Microsoft.Build.Traversal">
+              <PropertyGroup>
+                <IsTraversal>true</IsTraversal>
+              </PropertyGroup>
+              <Import Project="$(MSBuildThisFileDirectory)output.before.proj" Condition="Exists('$(MSBuildThisFileDirectory)output.before.proj')" />
+              <ItemGroup />
+              <Import Project="$(MSBuildThisFileDirectory)output.after.proj" Condition="Exists('$(MSBuildThisFileDirectory)output.after.proj')" />
+            </Project>
+            """);
+    }
+
+    [Theory]
+    [InlineData("MSBuild")]
+    [InlineData("RoslynWorkspace")]
+    [InlineData("StaticGraph")]
+    public async Task ProtobufItem_TrackedAsOwnedFile(string engine)
+    {
+        var repo = await CreateRepositoryAsync();
+
+        // Commit 1: proj1 owns a .proto file outside its folder through the built-in Protobuf item type
+        repo.CreateCommit(
+            ("global.json", """
+                {
+                  "msbuild-sdks": {
+                    "Microsoft.Build.Traversal": "4.1.82"
+                  }
+                }
+                """),
+            ("shared/service.proto", """
+                syntax = "proto3";
+                message Request { string id = 1; }
+                """),
+            ("src/proj1/proj1.csproj", """
+                <Project Sdk="Microsoft.NET.Sdk">
+                  <PropertyGroup>
+                    <TargetFramework>net10.0</TargetFramework>
+                  </PropertyGroup>
+                  <ItemGroup>
+                    <Protobuf Include="../../shared/service.proto" />
+                  </ItemGroup>
+                </Project>
+                """),
+            ("src/proj1/Class1.cs", """
+                namespace Proj1;
+                public class Class1 { }
+                """),
+            ("src/proj2/proj2.csproj", """
+                <Project Sdk="Microsoft.NET.Sdk">
+                  <PropertyGroup>
+                    <TargetFramework>net10.0</TargetFramework>
+                  </PropertyGroup>
+                </Project>
+                """),
+            ("src/proj2/Class2.cs", """
+                namespace Proj2;
+                public class Class2 { }
+                """),
+            ("dirs.proj", """
+                <Project Sdk="Microsoft.Build.Traversal">
+                  <ItemGroup>
+                    <ProjectReference Include="src/proj1/proj1.csproj" />
+                    <ProjectReference Include="src/proj2/proj2.csproj" />
+                  </ItemGroup>
+                </Project>
+                """)
+        );
+
+        // Commit 2: Change the .proto file
+        repo.CreateCommit(
+            ("shared/service.proto", """
+                syntax = "proto3";
+                message Request { string id = 1; int32 count = 2; }
+                """)
+        );
+
+        var outputPath = repo.RepositoryPath / "output.proj";
+        await RunTool(
+            "generate",
+            "--input", repo.RepositoryPath / "dirs.proj",
+            "--output", outputPath,
+            "--repository", repo.RepositoryPath,
+            "--base-commit", repo.Commits[^2],
+            "--head-commit", repo.Commits[^1],
+            "--engine", engine,
+            "--hierarchical-rebuild-trigger", "nonexistent-pattern-to-disable-defaults");
+
+        var content = await File.ReadAllTextAsync(outputPath, TestContext.Current.CancellationToken);
+        InlineSnapshot.Validate(content.Trim(), """
+            <Project Sdk="Microsoft.Build.Traversal">
+              <PropertyGroup>
+                <IsTraversal>true</IsTraversal>
+              </PropertyGroup>
+              <Import Project="$(MSBuildThisFileDirectory)output.before.proj" Condition="Exists('$(MSBuildThisFileDirectory)output.before.proj')" />
+              <ItemGroup>
+                <ProjectReference Include="$(MSBuildThisFileDirectory)src/proj1/proj1.csproj" />
+              </ItemGroup>
+              <Import Project="$(MSBuildThisFileDirectory)output.after.proj" Condition="Exists('$(MSBuildThisFileDirectory)output.after.proj')" />
+            </Project>
+            """);
+    }
 }

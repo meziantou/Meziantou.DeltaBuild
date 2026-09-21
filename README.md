@@ -167,7 +167,37 @@ DeltaBuild tracks the following MSBuild item types as owned files for each proje
 - `GlobalAnalyzerConfigFiles` — `.globalconfig` files
 - `Page`, `ApplicationDefinition`, `Resource` — WPF/XAML items
 - `TypeScriptCompile` — TypeScript files
+- `Protobuf` — `.proto` files (gRPC / protobuf tooling)
 - **Import paths** — `.props`, `.targets`, and other imported MSBuild files (via `ProjectInstance.ImportPaths`)
 - **Project file itself** — The `.csproj`/`.fsproj`/`.vbproj` file
 
 The `RoslynWorkspace` engine additionally tracks files exposed through Roslyn's `Documents`, `AdditionalDocuments`, and `AnalyzerConfigDocuments` collections.
+
+### Customizing tracked items
+
+Projects can extend the list above using MSBuild itself — no command line option is involved. Put the following in a project, or in a `Directory.Build.props` to apply it to a whole repository:
+
+```xml
+<Project>
+  <PropertyGroup>
+    <!-- Optional, default true. Set to false to drop the built-in item types above. -->
+    <DeltaBuildItemsIncludeDefaults>true</DeltaBuildItemsIncludeDefaults>
+  </PropertyGroup>
+  <ItemGroup>
+    <!-- Additional MSBuild item types to track as owned files -->
+    <DeltaBuildItems Include="ProtoFile;MyAssets" />
+
+    <!-- Additional owned files, given as paths relative to the project -->
+    <DeltaBuildIncludeFile Include="../../shared/schema.graphql" />
+
+    <!-- Files to remove from the owned files of this project -->
+    <DeltaBuildExcludeFile Include="Generated.cs" />
+  </ItemGroup>
+</Project>
+```
+
+- `DeltaBuildItems` contains **item type names**, not file paths. Items of these types are tracked exactly like the built-in ones (their `FullPath` metadata is used), which also works for files located outside the project directory.
+- `DeltaBuildIncludeFile` contains **file paths** that are added directly to the project's owned files, for files that no MSBuild item type covers.
+- `DeltaBuildExcludeFile` contains **file paths** that are removed from the owned files of the project, whatever tracked them (item types, `DeltaBuildIncludeFile`, imports, or Roslyn documents). Exclusions are applied last, and MSBuild wildcards such as `Include="**/*.g.cs"` work as usual.
+- `DeltaBuildItemsIncludeDefaults=false` only removes the built-in **item types**. The project file itself, its import paths, and — with the `RoslynWorkspace` engine — Roslyn's `Documents`, `AdditionalDocuments`, and `AnalyzerConfigDocuments` are always tracked.
+- Values of a custom item type that are not file paths are harmless: they resolve to paths that never match a changed file.

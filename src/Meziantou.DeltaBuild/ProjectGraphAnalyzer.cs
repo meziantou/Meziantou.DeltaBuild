@@ -11,21 +11,6 @@ namespace Meziantou.DeltaBuild;
 /// </summary>
 internal static class ProjectGraphAnalyzer
 {
-    private static readonly HashSet<string> FileItemTypes = new(StringComparer.OrdinalIgnoreCase)
-    {
-        "Compile",
-        "Content",
-        "None",
-        "EmbeddedResource",
-        "AdditionalFiles",
-        "EditorConfigFiles",
-        "GlobalAnalyzerConfigFiles",
-        "Page",
-        "ApplicationDefinition",
-        "Resource",
-        "TypeScriptCompile",
-    };
-
     public static Dictionary<string, ProjectInfo> Analyze(IReadOnlyList<FullPath> projectPaths, TextWriter? log = null)
     {
         log?.WriteLine($"Building project graph for {projectPaths.Count} entry point(s)...");
@@ -57,6 +42,7 @@ internal static class ProjectGraphAnalyzer
         foreach (var (projectPath, nodes) in nodesByPath)
         {
             var ownedFiles = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            var excludedFiles = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
             var referencedProjectPaths = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
             var referencingProjectPaths = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
             var isTestProject = false;
@@ -72,9 +58,10 @@ internal static class ProjectGraphAnalyzer
                 // Extract file items from ProjectInstance
                 try
                 {
+                    var fileItemTypes = DeltaBuildItems.GetItemTypes(node.ProjectInstance, DeltaBuildItems.DefaultItemTypes);
                     foreach (var item in node.ProjectInstance.Items)
                     {
-                        if (!FileItemTypes.Contains(item.ItemType))
+                        if (!fileItemTypes.Contains(item.ItemType))
                             continue;
 
                         var fullPath = item.GetMetadataValue("FullPath");
@@ -83,6 +70,9 @@ internal static class ProjectGraphAnalyzer
                             ownedFiles.Add(NormalizePath(fullPath));
                         }
                     }
+
+                    DeltaBuildItems.AddIncludedFiles(node.ProjectInstance, ownedFiles);
+                    DeltaBuildItems.AddExcludedFiles(node.ProjectInstance, excludedFiles);
                 }
                 catch (Exception ex)
                 {
@@ -110,6 +100,9 @@ internal static class ProjectGraphAnalyzer
                     referencingProjectPaths.Add(NormalizePath(dependent.ProjectInstance.FullPath));
                 }
             }
+
+            // Remove the files excluded by DeltaBuildExcludeFile
+            ownedFiles.ExceptWith(excludedFiles);
 
             result[projectPath] = new ProjectInfo
             {

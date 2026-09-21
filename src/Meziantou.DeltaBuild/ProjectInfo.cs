@@ -12,4 +12,9 @@ internal sealed class ProjectInfo
     {
         return bool.TryParse(value?.Trim(), out var result) && result;
     }
+
+    public static bool IsFalsePropertyValue(string? value)
+    {
+        return bool.TryParse(value?.Trim(), out var result) && !result;
+    }
 }
