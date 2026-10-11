@@ -112,6 +112,7 @@ When `--shard-separate` is used, listed projects are spread across shards in dec
 | `--working-tree` | | `false` | Compare the base commit against the current working directory instead of a commit. Includes staged, unstaged, and untracked files. When set, `--head-commit` is ignored. |
 | `--include` | | *(all projects)* | Glob patterns to filter which projects to consider. Repeatable. Only projects matching at least one pattern are included. |
 | `--test-projects-only` | | `false` | Only include projects where the MSBuild property `IsTestProject` is `true`. |
+| `--where` | | *(none)* | MSBuild condition evaluated against each project. Only projects for which the condition is `true` are included (see [Filtering projects with an MSBuild condition](#filtering-projects-with-an-msbuild-condition)). Example: `--where '$(PublishAot) == true'`. |
 | `--shard` | | *(none)* | Generate only shard number `N` (1-based). Must be used with `--total-shards`. |
 | `--total-shards` | | *(none)* | Total number of shards used to partition affected projects. Must be used with `--shard`. |
 | `--shard-separate` | | *(none)* | Project paths to spread across different shards in declaration order (repeatable). Must be used with `--shard` and `--total-shards`. Paths are relative to the repository root unless absolute. |
@@ -132,6 +133,31 @@ When `--shard-separate` is used, listed projects are spread across shards in dec
 | `RoslynWorkspace` | Uses Roslyn's `MSBuildWorkspace` to load projects. More compatible because Roslyn sees files added dynamically by MSBuild targets (e.g., source generators). Also tracks `.editorconfig` and `.globalconfig` via `AnalyzerConfigDocuments`. |
 | `StaticGraph` | Passes the input file (solution or traversal) as a single entry point to MSBuild's `ProjectGraph`, letting MSBuild handle solution/traversal parsing natively with parallel evaluation. Inspired by [Petabridge/Incrementalist](https://github.com/petabridge/Incrementalist). |
 
+### Filtering projects with an MSBuild condition
+
+`--where` takes an [MSBuild condition](https://learn.microsoft.com/visualstudio/msbuild/msbuild-conditions) and evaluates it against each project, using the project's evaluated properties and items. Only the affected projects for which the condition is true are written to the output.
+
+```bash
+# Only the affected projects published with Native AOT
+Meziantou.DeltaBuild generate \
+  --input dirs.proj \
+  --output delta.proj \
+  --where '$(PublishAot) == true'
+
+# Conditions can be combined
+Meziantou.DeltaBuild generate \
+  --input dirs.proj \
+  --output delta.proj \
+  --where '$(PublishAot) == true or $(PublishTrimmed) == true'
+```
+
+- The filter is applied after the affected projects are computed. A change in a project that doesn't match the condition still affects the matching projects that depend on it.
+- A multi-targeted project is included when the condition is true for at least one of its target frameworks.
+- `--where` can be combined with `--test-projects-only`; a project must then satisfy both.
+- Wrap the condition in single quotes in bash and PowerShell. With double quotes, the shell expands `$(...)` before the tool receives it.
+- The condition follows the MSBuild rules: a malformed condition, or an expression that cannot be evaluated for a project (for example `$(PublishAot)` alone or `$(ApiLevel) >= 2` when the property is not defined), fails the run. Compare with a value (`$(PublishAot) == true`) or guard the expression (`'$(ApiLevel)' != '' and $(ApiLevel) >= 2`).
+- A command-line value that starts with `@` is read as a response file, so quote item expressions inside the condition: `--where "'@(PackageReference)' != ''"`.
+
 ## How it works
 
 1. **Resolve commits** — Determines the base and head commits. If not provided, head defaults to `HEAD`. Base is computed via `git merge-base` using `origin/$GITHUB_BASE_REF` on GitHub Actions pull request events, otherwise using the default remote branch.
@@ -143,7 +169,7 @@ When `--shard-separate` is used, listed projects are spread across shards in dec
 7. **Analyze project graph** — Uses the selected engine to build the dependency graph and determine which files each project owns (source files, imports, `.props`, `.targets`, `.editorconfig`, `.globalconfig`, etc.).
 8. **Determine directly affected projects** — A project is directly affected if any of its owned files appears in the changed file list, or if it was flagged by a hierarchical trigger.
 9. **Expand impacted projects** — Walks up the dependency graph to include transitive dependents, and applies `--project-bundle` rules so if one project in a bundle is affected, all bundle members are included too.
-10. **Filter test projects (optional)** — When `--test-projects-only` is set, keeps only projects with `IsTestProject=true`.
+10. **Filter affected projects (optional)** — When `--test-projects-only` is set, keeps only projects with `IsTestProject=true`. When `--where` is set, keeps only projects for which the MSBuild condition is true.
 11. **Write output** — Produces the filtered solution/build file containing only the final affected projects. When `--shard` and `--total-shards` are set, only the selected shard is written to the provided `--output` path. If `--no-output-if-empty` is set and no project is affected in the selected result, the output file is skipped/deleted.
 
 ## Output formats

@@ -16,6 +16,7 @@ internal static class WorkspaceProjectAnalyzer
 {
     public static async Task<Dictionary<string, ProjectInfo>> AnalyzeAsync(
         IReadOnlyList<FullPath> projectPaths,
+        string? whereCondition,
         TextWriter? log,
         CancellationToken cancellationToken)
     {
@@ -154,10 +155,11 @@ internal static class WorkspaceProjectAnalyzer
 
             // Also track imported files (.props, .targets) via MSBuild evaluation.
             // Roslyn doesn't expose import paths, so we use ProjectInstance for this.
+            ProjectInstance? projectInstance = null;
             try
             {
-                var projectInstance = new ProjectInstance(projectPath);
-                isTestProject = ProjectInfo.IsTruePropertyValue(projectInstance.GetPropertyValue("IsTestProject"));
+                projectInstance = new ProjectInstance(projectPath);
+                isTestProject =ProjectInfo.IsTruePropertyValue(projectInstance.GetPropertyValue("IsTestProject"));
                 foreach (var importPath in projectInstance.ImportPaths)
                 {
                     ownedFiles.Add(NormalizePath(importPath));
@@ -189,6 +191,11 @@ internal static class WorkspaceProjectAnalyzer
                 log?.WriteLine($"  Warning: Could not evaluate imports for {projectPath}: {ex.Message}");
             }
 
+            // Evaluated outside the try/catch so an invalid condition is reported instead of being ignored.
+            // A project that could not be evaluated never matches the condition.
+            var matchesWhereCondition = whereCondition is null ||
+                (projectInstance is not null && MatchesWhereCondition(projectInstance, whereCondition));
+
             result[projectPath] = new ProjectInfo
             {
                 ProjectPath = projectPath,
@@ -196,10 +203,39 @@ internal static class WorkspaceProjectAnalyzer
                 ReferencedProjectPaths = referencedProjectPaths,
                 ReferencingProjectPaths = referencingProjectPaths,
                 IsTestProject = isTestProject,
+                MatchesWhereCondition = matchesWhereCondition,
             };
         }
 
         return result;
+    }
+
+    private static bool MatchesWhereCondition(ProjectInstance projectInstance, string whereCondition)
+    {
+        if (ProjectCondition.Evaluate(projectInstance, whereCondition))
+            return true;
+
+        // A multi-targeted project is evaluated as its outer build, which doesn't see the properties
+        // set per target framework. Evaluate each target framework like the graph-based engines do.
+        if (!string.IsNullOrEmpty(projectInstance.GetPropertyValue("TargetFramework")))
+            return false;
+
+        var targetFrameworks = projectInstance.GetPropertyValue("TargetFrameworks")
+            .Split(';', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries);
+
+        foreach (var targetFramework in targetFrameworks)
+        {
+            var globalProperties = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+            {
+                ["TargetFramework"] = targetFramework,
+            };
+
+            var targetFrameworkInstance = new ProjectInstance(projectInstance.FullPath, globalProperties, toolsVersion: null);
+            if (ProjectCondition.Evaluate(targetFrameworkInstance, whereCondition))
+                return true;
+        }
+
+        return false;
     }
 
     private static string NormalizePath(string path)

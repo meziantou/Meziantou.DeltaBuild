@@ -20,6 +20,11 @@ internal static class DeltaBuildEngine
     {
         ValidateShardOptions(options);
 
+        if (options.WhereCondition is not null)
+        {
+            ProjectCondition.Validate(options.WhereCondition);
+        }
+
         var repositoryPath = FullPath.FromPath(options.RepositoryPath);
 
         var isWorkingTree = options.CompareWorkingTree;
@@ -154,7 +159,7 @@ internal static class DeltaBuildEngine
         {
             log.WriteLine($"Full rebuild triggered by global file '{fullRebuildTriggerFile}'.");
 
-            if (!options.TestProjectsOnly)
+            if (!options.TestProjectsOnly && options.WhereCondition is null)
             {
                 foreach (var projectPath in projectPaths.OrderBy(p => p, FullPathComparer.Default))
                 {
@@ -179,9 +184,9 @@ internal static class DeltaBuildEngine
         log.WriteLine($"Analyzing projects using engine: {options.Engine}");
         var projectInfos = options.Engine switch
         {
-            AnalysisEngine.StaticGraph => StaticGraphProjectAnalyzer.Analyze(input.InputFilePath, log),
-            AnalysisEngine.RoslynWorkspace => await WorkspaceProjectAnalyzer.AnalyzeAsync(projectPaths, log, cancellationToken),
-            _ => ProjectGraphAnalyzer.Analyze(projectPaths, log),
+            AnalysisEngine.StaticGraph => StaticGraphProjectAnalyzer.Analyze(input.InputFilePath, options.WhereCondition, log),
+            AnalysisEngine.RoslynWorkspace => await WorkspaceProjectAnalyzer.AnalyzeAsync(projectPaths, options.WhereCondition, log, cancellationToken),
+            _ => ProjectGraphAnalyzer.Analyze(projectPaths, options.WhereCondition, log),
         };
 
         if (fullRebuildTriggerFile is not null)
@@ -190,7 +195,15 @@ internal static class DeltaBuildEngine
                 .OrderBy(p => p, FullPathComparer.Default)
                 .ToList();
 
-            fullRebuildAffectedProjects = FilterToTestProjects(fullRebuildAffectedProjects, projectInfos, log);
+            if (options.TestProjectsOnly)
+            {
+                fullRebuildAffectedProjects = FilterToTestProjects(fullRebuildAffectedProjects, projectInfos, log);
+            }
+
+            if (options.WhereCondition is not null)
+            {
+                fullRebuildAffectedProjects = FilterToProjectsMatchingWhereCondition(fullRebuildAffectedProjects, projectInfos, log);
+            }
 
             foreach (var projectPath in fullRebuildAffectedProjects)
             {
@@ -356,6 +369,11 @@ internal static class DeltaBuildEngine
             affectedInputProjects = FilterToTestProjects(affectedInputProjects, projectInfos, log);
         }
 
+        if (options.WhereCondition is not null)
+        {
+            affectedInputProjects = FilterToProjectsMatchingWhereCondition(affectedInputProjects, projectInfos, log);
+        }
+
         foreach (var project in affectedInputProjects)
         {
             var normalizedProjectPath = ProjectGraphAnalyzer.NormalizePath(project);
@@ -430,6 +448,26 @@ internal static class DeltaBuildEngine
         }
 
         log.WriteLine($"After --test-projects-only filter: {result.Count} project(s)");
+        return result;
+    }
+
+    private static List<FullPath> FilterToProjectsMatchingWhereCondition(
+        List<FullPath> projectPaths,
+        Dictionary<string, ProjectInfo> projectInfos,
+        TextWriter log)
+    {
+        var result = new List<FullPath>(projectPaths.Count);
+        foreach (var projectPath in projectPaths)
+        {
+            var normalizedProjectPath = ProjectGraphAnalyzer.NormalizePath(projectPath);
+            if (projectInfos.TryGetValue(normalizedProjectPath, out var projectInfo) &&
+                projectInfo.MatchesWhereCondition)
+            {
+                result.Add(projectPath);
+            }
+        }
+
+        log.WriteLine($"After --where filter: {result.Count} project(s)");
         return result;
     }
 

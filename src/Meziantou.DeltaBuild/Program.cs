@@ -69,6 +69,11 @@ internal static class Program
             Description = "Only include projects where the MSBuild property IsTestProject is true",
         };
 
+        var whereOption = new Option<string?>("--where")
+        {
+            Description = "MSBuild condition evaluated against each project; only projects for which it is true are included (for example: $(PublishAot) == true)",
+        };
+
         var shardOption = new Option<int?>("--shard")
         {
             Description = "Generate only the specified shard (1-based). Must be used with --total-shards.",
@@ -136,6 +141,7 @@ internal static class Program
             workingTreeOption,
             includeOption,
             testProjectsOnlyOption,
+            whereOption,
             shardOption,
             totalShardsOption,
             shardSeparateOption,
@@ -162,6 +168,7 @@ internal static class Program
                 CompareWorkingTree = parseResult.GetValue(workingTreeOption),
                 IncludePatterns = parseResult.GetValue(includeOption) ?? [],
                 TestProjectsOnly = parseResult.GetValue(testProjectsOnlyOption),
+                WhereCondition = parseResult.GetValue(whereOption),
                 Shard = parseResult.GetValue(shardOption),
                 TotalShards = parseResult.GetValue(totalShardsOption),
                 ShardSeparateProjects = parseResult.GetValue(shardSeparateOption) ?? [],

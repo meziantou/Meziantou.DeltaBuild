@@ -7,6 +7,7 @@ internal sealed class ProjectInfo
     public required HashSet<string> ReferencedProjectPaths { get; init; }
     public required HashSet<string> ReferencingProjectPaths { get; init; }
     public required bool IsTestProject { get; init; }
+    public required bool MatchesWhereCondition { get; init; }
 
     public static bool IsTruePropertyValue(string? value)
     {
