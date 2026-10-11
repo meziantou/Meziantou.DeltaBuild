@@ -4998,4 +4998,443 @@ public sealed class DeltaBuildTests(ITestOutputHelper output) : IAsyncDisposable
             </Project>
             """);
     }
+
+    [Theory]
+    [InlineData("MSBuild")]
+    [InlineData("RoslynWorkspace")]
+    [InlineData("StaticGraph")]
+    public async Task Where_OnlyIncludesProjectsMatchingCondition(string engine)
+    {
+        var repo = await CreateRepositoryAsync();
+
+        // Lib is not published with Native AOT, but its change must still propagate to App
+        repo.CreateCommit(
+            ("global.json", """
+                {
+                  "msbuild-sdks": {
+                    "Microsoft.Build.Traversal": "4.1.82"
+                  }
+                }
+                """),
+            ("src/Lib/Lib.csproj", """
+                <Project Sdk="Microsoft.NET.Sdk">
+                  <PropertyGroup>
+                    <TargetFramework>net10.0</TargetFramework>
+                  </PropertyGroup>
+                </Project>
+                """),
+            ("src/Lib/MyClass.cs", """
+                namespace Lib;
+                public class MyClass { }
+                """),
+            ("src/App/App.csproj", """
+                <Project Sdk="Microsoft.NET.Sdk">
+                  <PropertyGroup>
+                    <TargetFramework>net10.0</TargetFramework>
+                    <OutputType>Exe</OutputType>
+                    <PublishAot>true</PublishAot>
+                  </PropertyGroup>
+                  <ItemGroup>
+                    <ProjectReference Include="../Lib/Lib.csproj" />
+                  </ItemGroup>
+                </Project>
+                """),
+            ("src/App/Program.cs", """
+                Console.WriteLine("App");
+                """),
+            ("src/Tool/Tool.csproj", """
+                <Project Sdk="Microsoft.NET.Sdk">
+                  <PropertyGroup>
+                    <TargetFramework>net10.0</TargetFramework>
+                    <OutputType>Exe</OutputType>
+                  </PropertyGroup>
+                  <ItemGroup>
+                    <ProjectReference Include="../Lib/Lib.csproj" />
+                  </ItemGroup>
+                </Project>
+                """),
+            ("src/Tool/Program.cs", """
+                Console.WriteLine("Tool");
+                """),
+            ("dirs.proj", """
+                <Project Sdk="Microsoft.Build.Traversal">
+                  <ItemGroup>
+                    <ProjectReference Include="src/Lib/Lib.csproj" />
+                    <ProjectReference Include="src/App/App.csproj" />
+                    <ProjectReference Include="src/Tool/Tool.csproj" />
+                  </ItemGroup>
+                </Project>
+                """)
+        );
+
+        repo.CreateCommit(
+            ("src/Lib/MyClass.cs", """
+                namespace Lib;
+                public class MyClass { public int Value => 42; }
+                """)
+        );
+
+        var outputPath = repo.RepositoryPath / "output.txt";
+        await RunTool(
+            "generate",
+            "--input", repo.RepositoryPath / "dirs.proj",
+            "--output", outputPath,
+            "--repository", repo.RepositoryPath,
+            "--base-commit", repo.Commits[^2],
+            "--head-commit", repo.Commits[^1],
+            "--engine", engine,
+            "--hierarchical-rebuild-trigger", "nonexistent-pattern-to-disable-defaults",
+            "--where", "$(PublishAot) == true");
+
+        var content = await File.ReadAllTextAsync(outputPath, TestContext.Current.CancellationToken);
+        InlineSnapshot.Validate(content.Trim(), """
+            src/App/App.csproj
+            """);
+    }
+
+    [Theory]
+    [InlineData("MSBuild")]
+    [InlineData("RoslynWorkspace")]
+    [InlineData("StaticGraph")]
+    public async Task Where_MultiTargeting_MatchesWhenAnyTargetFrameworkMatches(string engine)
+    {
+        var repo = await CreateRepositoryAsync();
+
+        // App sets PublishAot for a single target framework, Tool never sets it
+        repo.CreateCommit(
+            ("global.json", """
+                {
+                  "msbuild-sdks": {
+                    "Microsoft.Build.Traversal": "4.1.82"
+                  }
+                }
+                """),
+            ("src/App/App.csproj", """
+                <Project Sdk="Microsoft.NET.Sdk">
+                  <PropertyGroup>
+                    <TargetFrameworks>net9.0;net10.0</TargetFrameworks>
+                    <OutputType>Exe</OutputType>
+                  </PropertyGroup>
+                  <PropertyGroup Condition="'$(TargetFramework)' == 'net10.0'">
+                    <PublishAot>true</PublishAot>
+                  </PropertyGroup>
+                </Project>
+                """),
+            ("src/App/Program.cs", """
+                Console.WriteLine("App");
+                """),
+            ("src/Tool/Tool.csproj", """
+                <Project Sdk="Microsoft.NET.Sdk">
+                  <PropertyGroup>
+                    <TargetFrameworks>net9.0;net10.0</TargetFrameworks>
+                    <OutputType>Exe</OutputType>
+                  </PropertyGroup>
+                </Project>
+                """),
+            ("src/Tool/Program.cs", """
+                Console.WriteLine("Tool");
+                """),
+            ("dirs.proj", """
+                <Project Sdk="Microsoft.Build.Traversal">
+                  <ItemGroup>
+                    <ProjectReference Include="src/App/App.csproj" />
+                    <ProjectReference Include="src/Tool/Tool.csproj" />
+                  </ItemGroup>
+                </Project>
+                """)
+        );
+
+        repo.CreateCommit(
+            ("src/App/Program.cs", """
+                Console.WriteLine("App v2");
+                """),
+            ("src/Tool/Program.cs", """
+                Console.WriteLine("Tool v2");
+                """)
+        );
+
+        var outputPath = repo.RepositoryPath / "output.txt";
+        await RunTool(
+            "generate",
+            "--input", repo.RepositoryPath / "dirs.proj",
+            "--output", outputPath,
+            "--repository", repo.RepositoryPath,
+            "--base-commit", repo.Commits[^2],
+            "--head-commit", repo.Commits[^1],
+            "--engine", engine,
+            "--hierarchical-rebuild-trigger", "nonexistent-pattern-to-disable-defaults",
+            "--where", "$(PublishAot) == true");
+
+        var content = await File.ReadAllTextAsync(outputPath, TestContext.Current.CancellationToken);
+        InlineSnapshot.Validate(content.Trim(), """
+            src/App/App.csproj
+            """);
+    }
+
+    [Fact]
+    public async Task FullRebuildTrigger_WithWhere_IncludesOnlyMatchingProjects()
+    {
+        var repo = await CreateRepositoryAsync();
+
+        repo.CreateCommit(
+            ("eng/build.ps1", """
+                Write-Host "build v1"
+                """),
+            ("src/App/App.csproj", """
+                <Project Sdk="Microsoft.NET.Sdk">
+                  <PropertyGroup>
+                    <TargetFramework>net10.0</TargetFramework>
+                    <OutputType>Exe</OutputType>
+                    <PublishAot>true</PublishAot>
+                  </PropertyGroup>
+                </Project>
+                """),
+            ("src/App/Program.cs", """
+                Console.WriteLine("App");
+                """),
+            ("src/Tool/Tool.csproj", """
+                <Project Sdk="Microsoft.NET.Sdk">
+                  <PropertyGroup>
+                    <TargetFramework>net10.0</TargetFramework>
+                    <OutputType>Exe</OutputType>
+                  </PropertyGroup>
+                </Project>
+                """),
+            ("src/Tool/Program.cs", """
+                Console.WriteLine("Tool");
+                """),
+            ("dirs.proj", """
+                <Project Sdk="Microsoft.Build.Traversal">
+                  <ItemGroup>
+                    <ProjectReference Include="src/App/App.csproj" />
+                    <ProjectReference Include="src/Tool/Tool.csproj" />
+                  </ItemGroup>
+                </Project>
+                """)
+        );
+
+        repo.CreateCommit(
+            ("eng/build.ps1", """
+                Write-Host "build v2"
+                """)
+        );
+
+        var outputPath = repo.RepositoryPath / "output.txt";
+        await RunTool(
+            "generate",
+            "--input", repo.RepositoryPath / "dirs.proj",
+            "--output", outputPath,
+            "--repository", repo.RepositoryPath,
+            "--base-commit", repo.Commits[^2],
+            "--head-commit", repo.Commits[^1],
+            "--full-rebuild-trigger", "eng/**/*",
+            "--where", "$(PublishAot) == true");
+
+        var content = await File.ReadAllTextAsync(outputPath, TestContext.Current.CancellationToken);
+        InlineSnapshot.Validate(content.Trim(), """
+            src/App/App.csproj
+            """);
+    }
+
+    [Fact]
+    public async Task Where_WithTestProjectsOnly_RequiresBoth()
+    {
+        var repo = await CreateRepositoryAsync();
+
+        repo.CreateCommit(
+            ("eng/build.ps1", """
+                Write-Host "build v1"
+                """),
+            ("src/App/App.csproj", """
+                <Project Sdk="Microsoft.NET.Sdk">
+                  <PropertyGroup>
+                    <TargetFramework>net10.0</TargetFramework>
+                    <OutputType>Exe</OutputType>
+                    <PublishAot>true</PublishAot>
+                  </PropertyGroup>
+                </Project>
+                """),
+            ("src/App/Program.cs", """
+                Console.WriteLine("App");
+                """),
+            ("tests/Aot.Tests/Aot.Tests.csproj", """
+                <Project Sdk="Microsoft.NET.Sdk">
+                  <PropertyGroup>
+                    <TargetFramework>net10.0</TargetFramework>
+                    <OutputType>Exe</OutputType>
+                    <IsTestProject>true</IsTestProject>
+                    <PublishAot>true</PublishAot>
+                  </PropertyGroup>
+                </Project>
+                """),
+            ("tests/Aot.Tests/Program.cs", """
+                Console.WriteLine("Aot.Tests");
+                """),
+            ("tests/Jit.Tests/Jit.Tests.csproj", """
+                <Project Sdk="Microsoft.NET.Sdk">
+                  <PropertyGroup>
+                    <TargetFramework>net10.0</TargetFramework>
+                    <IsTestProject>true</IsTestProject>
+                  </PropertyGroup>
+                </Project>
+                """),
+            ("tests/Jit.Tests/Test1.cs", """
+                namespace Jit.Tests;
+                public class Test1 { }
+                """),
+            ("dirs.proj", """
+                <Project Sdk="Microsoft.Build.Traversal">
+                  <ItemGroup>
+                    <ProjectReference Include="src/App/App.csproj" />
+                    <ProjectReference Include="tests/Aot.Tests/Aot.Tests.csproj" />
+                    <ProjectReference Include="tests/Jit.Tests/Jit.Tests.csproj" />
+                  </ItemGroup>
+                </Project>
+                """)
+        );
+
+        repo.CreateCommit(
+            ("src/App/Program.cs", """
+                Console.WriteLine("App v2");
+                """),
+            ("tests/Aot.Tests/Program.cs", """
+                Console.WriteLine("Aot.Tests v2");
+                """),
+            ("tests/Jit.Tests/Test1.cs", """
+                namespace Jit.Tests;
+                public class Test1 { public int Value => 42; }
+                """)
+        );
+
+        var outputPath = repo.RepositoryPath / "output.txt";
+        await RunTool(
+            "generate",
+            "--input", repo.RepositoryPath / "dirs.proj",
+            "--output", outputPath,
+            "--repository", repo.RepositoryPath,
+            "--base-commit", repo.Commits[^2],
+            "--head-commit", repo.Commits[^1],
+            "--test-projects-only",
+            "--where", "$(PublishAot) == true");
+
+        var content = await File.ReadAllTextAsync(outputPath, TestContext.Current.CancellationToken);
+        InlineSnapshot.Validate(content.Trim(), """
+            tests/Aot.Tests/Aot.Tests.csproj
+            """);
+    }
+
+    [Fact]
+    public async Task Where_NumericComparison_UsesEvaluatedPropertyValues()
+    {
+        var repo = await CreateRepositoryAsync();
+
+        repo.CreateCommit(
+            ("src/A/A.csproj", """
+                <Project Sdk="Microsoft.NET.Sdk">
+                  <PropertyGroup>
+                    <TargetFramework>net10.0</TargetFramework>
+                    <ApiLevel>1</ApiLevel>
+                  </PropertyGroup>
+                </Project>
+                """),
+            ("src/A/Class1.cs", """
+                namespace A;
+                public class Class1 { }
+                """),
+            ("src/B/B.csproj", """
+                <Project Sdk="Microsoft.NET.Sdk">
+                  <PropertyGroup>
+                    <TargetFramework>net10.0</TargetFramework>
+                    <ApiLevel>3</ApiLevel>
+                  </PropertyGroup>
+                </Project>
+                """),
+            ("src/B/Class1.cs", """
+                namespace B;
+                public class Class1 { }
+                """),
+            ("dirs.proj", """
+                <Project Sdk="Microsoft.Build.Traversal">
+                  <ItemGroup>
+                    <ProjectReference Include="src/A/A.csproj" />
+                    <ProjectReference Include="src/B/B.csproj" />
+                  </ItemGroup>
+                </Project>
+                """)
+        );
+
+        repo.CreateCommit(
+            ("src/A/Class1.cs", """
+                namespace A;
+                public class Class1 { public int Value => 42; }
+                """),
+            ("src/B/Class1.cs", """
+                namespace B;
+                public class Class1 { public int Value => 42; }
+                """)
+        );
+
+        var outputPath = repo.RepositoryPath / "output.txt";
+        await RunTool(
+            "generate",
+            "--input", repo.RepositoryPath / "dirs.proj",
+            "--output", outputPath,
+            "--repository", repo.RepositoryPath,
+            "--base-commit", repo.Commits[^2],
+            "--head-commit", repo.Commits[^1],
+            "--where", "$(ApiLevel) >= 2");
+
+        var content = await File.ReadAllTextAsync(outputPath, TestContext.Current.CancellationToken);
+        InlineSnapshot.Validate(content.Trim(), """
+            src/B/B.csproj
+            """);
+    }
+
+    [Fact]
+    public async Task Where_InvalidCondition_Fails()
+    {
+        var repo = await CreateRepositoryAsync();
+
+        repo.CreateCommit(
+            ("src/App/App.csproj", """
+                <Project Sdk="Microsoft.NET.Sdk">
+                  <PropertyGroup>
+                    <TargetFramework>net10.0</TargetFramework>
+                    <OutputType>Exe</OutputType>
+                  </PropertyGroup>
+                </Project>
+                """),
+            ("src/App/Program.cs", """
+                Console.WriteLine("App");
+                """),
+            ("dirs.proj", """
+                <Project Sdk="Microsoft.Build.Traversal">
+                  <ItemGroup>
+                    <ProjectReference Include="src/App/App.csproj" />
+                  </ItemGroup>
+                </Project>
+                """)
+        );
+
+        repo.CreateCommit(
+            ("src/App/Program.cs", """
+                Console.WriteLine("App v2");
+                """)
+        );
+
+        var outputPath = repo.RepositoryPath / "output.txt";
+        var result = await ToolRunner.RunToolRawAsync(
+            output,
+            "generate",
+            "--input", repo.RepositoryPath / "dirs.proj",
+            "--output", outputPath,
+            "--repository", repo.RepositoryPath,
+            "--base-commit", repo.Commits[^2],
+            "--head-commit", repo.Commits[^1],
+            "--where", "$(PublishAot) ==");
+
+        Assert.NotEqual(0, result.ExitCode);
+        Assert.Contains("The --where condition '$(PublishAot) ==' is invalid", result.Stderr + result.Stdout);
+        Assert.False(File.Exists(outputPath));
+    }
 }

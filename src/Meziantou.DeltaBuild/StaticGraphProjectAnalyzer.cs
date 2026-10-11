@@ -14,7 +14,7 @@ namespace Meziantou.DeltaBuild;
 /// </summary>
 internal static class StaticGraphProjectAnalyzer
 {
-    public static Dictionary<string, ProjectInfo> Analyze(FullPath inputFilePath, TextWriter? log = null)
+    public static Dictionary<string, ProjectInfo> Analyze(FullPath inputFilePath, string? whereCondition, TextWriter? log = null)
     {
         log?.WriteLine($"Building static graph from entry point: {inputFilePath}");
 
@@ -51,6 +51,7 @@ internal static class StaticGraphProjectAnalyzer
             var referencedProjectPaths = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
             var referencingProjectPaths = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
             var isTestProject = false;
+            var matchesWhereCondition = whereCondition is null;
 
             foreach (var node in nodes)
             {
@@ -58,6 +59,11 @@ internal static class StaticGraphProjectAnalyzer
                 {
                     var propertyValue = node.ProjectInstance.GetPropertyValue("IsTestProject");
                     isTestProject = ProjectInfo.IsTruePropertyValue(propertyValue);
+                }
+
+                if (whereCondition is not null && !matchesWhereCondition)
+                {
+                    matchesWhereCondition = ProjectCondition.Evaluate(node.ProjectInstance, whereCondition);
                 }
 
                 // Extract file items from ProjectInstance
@@ -116,6 +122,7 @@ internal static class StaticGraphProjectAnalyzer
                 ReferencedProjectPaths = referencedProjectPaths,
                 ReferencingProjectPaths = referencingProjectPaths,
                 IsTestProject = isTestProject,
+                MatchesWhereCondition = matchesWhereCondition,
             };
         }
 

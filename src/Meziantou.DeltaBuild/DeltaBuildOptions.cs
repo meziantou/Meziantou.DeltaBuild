@@ -12,6 +12,7 @@ internal sealed class DeltaBuildOptions
     public bool CompareWorkingTree { get; init; }
     public string[] IncludePatterns { get; init; } = [];
     public bool TestProjectsOnly { get; init; }
+    public string? WhereCondition { get; init; }
     public int? Shard { get; init; }
     public int? TotalShards { get; init; }
     public string[] ShardSeparateProjects { get; init; } = [];

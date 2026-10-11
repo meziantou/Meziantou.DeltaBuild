@@ -11,7 +11,7 @@ namespace Meziantou.DeltaBuild;
 /// </summary>
 internal static class ProjectGraphAnalyzer
 {
-    public static Dictionary<string, ProjectInfo> Analyze(IReadOnlyList<FullPath> projectPaths, TextWriter? log = null)
+    public static Dictionary<string, ProjectInfo> Analyze(IReadOnlyList<FullPath> projectPaths, string? whereCondition, TextWriter? log = null)
     {
         log?.WriteLine($"Building project graph for {projectPaths.Count} entry point(s)...");
 
@@ -46,6 +46,7 @@ internal static class ProjectGraphAnalyzer
             var referencedProjectPaths = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
             var referencingProjectPaths = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
             var isTestProject = false;
+            var matchesWhereCondition = whereCondition is null;
 
             foreach (var node in nodes)
             {
@@ -53,6 +54,11 @@ internal static class ProjectGraphAnalyzer
                 {
                     var propertyValue = node.ProjectInstance.GetPropertyValue("IsTestProject");
                     isTestProject = ProjectInfo.IsTruePropertyValue(propertyValue);
+                }
+
+                if (whereCondition is not null && !matchesWhereCondition)
+                {
+                    matchesWhereCondition = ProjectCondition.Evaluate(node.ProjectInstance, whereCondition);
                 }
 
                 // Extract file items from ProjectInstance
@@ -111,6 +117,7 @@ internal static class ProjectGraphAnalyzer
                 ReferencedProjectPaths = referencedProjectPaths,
                 ReferencingProjectPaths = referencingProjectPaths,
                 IsTestProject = isTestProject,
+                MatchesWhereCondition = matchesWhereCondition,
             };
         }
 
