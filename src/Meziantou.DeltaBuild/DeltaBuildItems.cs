@@ -90,30 +90,42 @@ internal static class DeltaBuildItems
     }
 
     /// <summary>
+    /// Adds the files of the tracked item types to the owned files of a project.
+    /// Only the files contained in <paramref name="changedFiles"/> are added, as they are the only ones used to find the affected projects.
+    /// </summary>
+    public static void AddItemFiles(ProjectInstance projectInstance, IEnumerable<string> itemTypes, IReadOnlySet<string> changedFiles, HashSet<string> ownedFiles)
+    {
+        foreach (var itemType in itemTypes)
+        {
+            AddFiles(projectInstance, itemType, changedFiles, ownedFiles);
+        }
+    }
+
+    /// <summary>
     /// Adds the files declared by the <c>DeltaBuildIncludeFile</c> item to the owned files of a project.
     /// </summary>
-    public static void AddIncludedFiles(ProjectInstance projectInstance, HashSet<string> ownedFiles)
+    public static void AddIncludedFiles(ProjectInstance projectInstance, IReadOnlySet<string> changedFiles, HashSet<string> ownedFiles)
     {
-        AddFiles(projectInstance, IncludeFileItemName, ownedFiles);
+        AddFiles(projectInstance, IncludeFileItemName, changedFiles, ownedFiles);
     }
 
     /// <summary>
     /// Adds the files declared by the <c>DeltaBuildExcludeFile</c> item to the files to remove
     /// from the owned files of a project. Exclusions are applied after all files are collected.
     /// </summary>
-    public static void AddExcludedFiles(ProjectInstance projectInstance, HashSet<string> excludedFiles)
+    public static void AddExcludedFiles(ProjectInstance projectInstance, IReadOnlySet<string> changedFiles, HashSet<string> excludedFiles)
     {
-        AddFiles(projectInstance, ExcludeFileItemName, excludedFiles);
+        AddFiles(projectInstance, ExcludeFileItemName, changedFiles, excludedFiles);
     }
 
-    private static void AddFiles(ProjectInstance projectInstance, string itemName, HashSet<string> files)
+    private static void AddFiles(ProjectInstance projectInstance, string itemName, IReadOnlySet<string> changedFiles, HashSet<string> files)
     {
         foreach (var item in projectInstance.GetItems(itemName))
         {
             var fullPath = item.GetMetadataValue("FullPath");
             if (!string.IsNullOrEmpty(fullPath))
             {
-                files.Add(ProjectGraphAnalyzer.NormalizePath(fullPath));
+                ProjectGraphAnalyzer.AddIfChanged(fullPath, changedFiles, files);
             }
         }
     }

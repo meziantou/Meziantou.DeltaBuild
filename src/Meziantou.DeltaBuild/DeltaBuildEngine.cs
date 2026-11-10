@@ -181,12 +181,24 @@ internal static class DeltaBuildEngine
             changedFiles, hierarchicalTriggerPatterns, projectPaths, repositoryPath);
 
         // Step 7: Build project graph and analyze
+        var normalizedChangedFiles = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var changedFilePathByNormalizedPath = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var file in changedFiles)
+        {
+            var normalizedFile = file.Replace('\\', '/');
+            var absolutePath = FullPath.Combine(repositoryPath, normalizedFile);
+            var normalizedAbsolutePath = ProjectGraphAnalyzer.NormalizePath(absolutePath);
+
+            normalizedChangedFiles.Add(normalizedAbsolutePath);
+            changedFilePathByNormalizedPath.TryAdd(normalizedAbsolutePath, normalizedFile);
+        }
+
         log.WriteLine($"Analyzing projects using engine: {options.Engine}");
         var projectInfos = options.Engine switch
         {
-            AnalysisEngine.StaticGraph => StaticGraphProjectAnalyzer.Analyze(input.InputFilePath, options.WhereCondition, log),
-            AnalysisEngine.RoslynWorkspace => await WorkspaceProjectAnalyzer.AnalyzeAsync(projectPaths, options.WhereCondition, log, cancellationToken),
-            _ => ProjectGraphAnalyzer.Analyze(projectPaths, options.WhereCondition, log),
+            AnalysisEngine.StaticGraph => StaticGraphProjectAnalyzer.Analyze(input.InputFilePath, normalizedChangedFiles, options.WhereCondition, log),
+            AnalysisEngine.RoslynWorkspace => await WorkspaceProjectAnalyzer.AnalyzeAsync(projectPaths, normalizedChangedFiles, options.WhereCondition, log, cancellationToken),
+            _ => ProjectGraphAnalyzer.Analyze(projectPaths, normalizedChangedFiles, options.WhereCondition, log),
         };
 
         if (fullRebuildTriggerFile is not null)
@@ -236,26 +248,11 @@ internal static class DeltaBuildEngine
         }
 
         // Step 8: Determine directly affected projects
-        var normalizedChangedFiles = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        var changedFilePathByNormalizedPath = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
-        foreach (var file in changedFiles)
-        {
-            var normalizedFile = file.Replace('\\', '/');
-            var absolutePath = FullPath.Combine(repositoryPath, normalizedFile);
-            var normalizedAbsolutePath = ProjectGraphAnalyzer.NormalizePath(absolutePath);
-
-            normalizedChangedFiles.Add(normalizedAbsolutePath);
-            changedFilePathByNormalizedPath.TryAdd(normalizedAbsolutePath, normalizedFile);
-        }
-
         var owningProjectsByChangedOwnedFile = new Dictionary<string, List<string>>(StringComparer.OrdinalIgnoreCase);
         foreach (var (projectPath, info) in projectInfos)
         {
             foreach (var ownedFile in info.OwnedFiles)
             {
-                if (!normalizedChangedFiles.Contains(ownedFile))
-                    continue;
-
                 if (!owningProjectsByChangedOwnedFile.TryGetValue(ownedFile, out var owningProjects))
                 {
                     owningProjects = [];
