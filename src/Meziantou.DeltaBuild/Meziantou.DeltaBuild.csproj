@@ -1,8 +1,13 @@
 <Project Sdk="Meziantou.NET.Sdk">
   <PropertyGroup>
     <OutputType>Exe</OutputType>
-    <Version>1.6.0</Version>
+    <Version>1.6.1</Version>
     <SearchReadmeFileAbove>true</SearchReadmeFileAbove>
+
+    <!-- MSBuild evaluates the projects on many threads and allocates a lot. Server GC scales with
+         these threads, and tiered PGO instrumentation costs more than it saves in a short-lived process. -->
+    <ServerGarbageCollection>true</ServerGarbageCollection>
+    <TieredPGO>false</TieredPGO>
   </PropertyGroup>
   <ItemGroup>
     <PackageReference Include="Microsoft.Build" ExcludeAssets="runtime" />

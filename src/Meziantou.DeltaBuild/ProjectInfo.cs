@@ -3,6 +3,10 @@ namespace Meziantou.DeltaBuild;
 internal sealed class ProjectInfo
 {
     public required string ProjectPath { get; init; }
+
+    /// <summary>
+    /// The normalized paths of the files owned by the project. Only the changed files are tracked.
+    /// </summary>
     public required HashSet<string> OwnedFiles { get; init; }
     public required HashSet<string> ReferencedProjectPaths { get; init; }
     public required HashSet<string> ReferencingProjectPaths { get; init; }
