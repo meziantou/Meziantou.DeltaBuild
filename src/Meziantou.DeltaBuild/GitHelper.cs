@@ -26,6 +26,59 @@ internal static class GitHelper
         return fullRef;
     }
 
+    public static async Task<string?> TryGetDefaultBranchAsync(string repositoryPath, CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            return await GetDefaultBranchAsync(repositoryPath, cancellationToken);
+        }
+        catch (InvalidOperationException)
+        {
+            return null;
+        }
+    }
+
+    public static async Task<bool> IsCommitAsync(string repositoryPath, string revision, CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            await RunGitAsync(repositoryPath, ["rev-parse", "--verify", "--quiet", "--end-of-options", revision + "^{commit}"], cancellationToken);
+            return true;
+        }
+        catch (InvalidOperationException)
+        {
+            return false;
+        }
+    }
+
+    /// <summary>
+    /// Gets the newest commit of the first-parent history of <paramref name="targetBranch"/> that is an ancestor of
+    /// <paramref name="head"/> and is not an ancestor of <paramref name="baseCommit"/>, or <see langword="null"/> if there is none.
+    /// This is the latest state of the target branch that has been merged into <paramref name="head"/>.
+    /// </summary>
+    public static async Task<string?> GetLatestMergedFirstParentCommitAsync(string repositoryPath, string baseCommit, string head, string targetBranch, CancellationToken cancellationToken = default)
+    {
+        var headCommits = await RunGitAsync(repositoryPath, ["rev-list", head, "^" + baseCommit, "--"], cancellationToken);
+        if (string.IsNullOrEmpty(headCommits))
+        {
+            return null;
+        }
+
+        var headCommitSet = new HashSet<string>(headCommits.Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries), StringComparer.Ordinal);
+
+        // Newest first
+        var targetCommits = await RunGitAsync(repositoryPath, ["rev-list", "--first-parent", targetBranch, "^" + baseCommit, "--"], cancellationToken);
+        foreach (var commit in targetCommits.Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+        {
+            if (headCommitSet.Contains(commit))
+            {
+                return commit;
+            }
+        }
+
+        return null;
+    }
+
     public static async Task<string> GetMergeBaseAsync(string repositoryPath, string commitA, string commitB, CancellationToken cancellationToken = default)
     {
         var result = await RunGitAsync(repositoryPath, ["merge-base", commitA, commitB], cancellationToken);
