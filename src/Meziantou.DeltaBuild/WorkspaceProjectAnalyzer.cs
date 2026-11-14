@@ -1,4 +1,7 @@
 using Meziantou.Framework;
+using Microsoft.Build.Definition;
+using Microsoft.Build.Evaluation;
+using Microsoft.Build.Evaluation.Context;
 using Microsoft.Build.Execution;
 using Microsoft.CodeAnalysis.MSBuild;
 
@@ -16,6 +19,7 @@ internal static class WorkspaceProjectAnalyzer
 {
     public static async Task<Dictionary<string, ProjectInfo>> AnalyzeAsync(
         IReadOnlyList<FullPath> projectPaths,
+        IReadOnlySet<string> changedFiles,
         string? whereCondition,
         TextWriter? log,
         CancellationToken cancellationToken)
@@ -90,6 +94,14 @@ internal static class WorkspaceProjectAnalyzer
             list.Add(project);
         }
 
+        // Share the evaluation caches (file system, imports, globs) between the evaluations of the projects
+        using var projectCollection = new ProjectCollection();
+        var projectOptions = new ProjectOptions
+        {
+            ProjectCollection = projectCollection,
+            EvaluationContext = EvaluationContext.Create(EvaluationContext.SharingPolicy.Shared),
+        };
+
         // Build the result dictionary
         var result = new Dictionary<string, ProjectInfo>(StringComparer.OrdinalIgnoreCase);
 
@@ -101,7 +113,10 @@ internal static class WorkspaceProjectAnalyzer
             var isTestProject = false;
 
             // Include the project file itself
-            ownedFiles.Add(projectPath);
+            if (changedFiles.Contains(projectPath))
+            {
+                ownedFiles.Add(projectPath);
+            }
 
             foreach (var roslynProject in roslynProjects)
             {
@@ -110,7 +125,7 @@ internal static class WorkspaceProjectAnalyzer
                 {
                     if (doc.FilePath is not null)
                     {
-                        ownedFiles.Add(NormalizePath(doc.FilePath));
+                        ProjectGraphAnalyzer.AddIfChanged(doc.FilePath, changedFiles, ownedFiles);
                     }
                 }
 
@@ -119,7 +134,7 @@ internal static class WorkspaceProjectAnalyzer
                 {
                     if (doc.FilePath is not null)
                     {
-                        ownedFiles.Add(NormalizePath(doc.FilePath));
+                        ProjectGraphAnalyzer.AddIfChanged(doc.FilePath, changedFiles, ownedFiles);
                     }
                 }
 
@@ -128,7 +143,7 @@ internal static class WorkspaceProjectAnalyzer
                 {
                     if (doc.FilePath is not null)
                     {
-                        ownedFiles.Add(NormalizePath(doc.FilePath));
+                        ProjectGraphAnalyzer.AddIfChanged(doc.FilePath, changedFiles, ownedFiles);
                     }
                 }
 
@@ -158,32 +173,21 @@ internal static class WorkspaceProjectAnalyzer
             ProjectInstance? projectInstance = null;
             try
             {
-                projectInstance = new ProjectInstance(projectPath);
-                isTestProject =ProjectInfo.IsTruePropertyValue(projectInstance.GetPropertyValue("IsTestProject"));
+                projectInstance = ProjectInstance.FromFile(projectPath, projectOptions);
+                isTestProject = ProjectInfo.IsTruePropertyValue(projectInstance.GetPropertyValue("IsTestProject"));
                 foreach (var importPath in projectInstance.ImportPaths)
                 {
-                    ownedFiles.Add(NormalizePath(importPath));
+                    ProjectGraphAnalyzer.AddIfChanged(importPath, changedFiles, ownedFiles);
                 }
 
                 // Also include non-source items that Roslyn doesn't track (Content, None, EmbeddedResource, etc.)
                 var fileItemTypes = DeltaBuildItems.GetItemTypes(projectInstance, DeltaBuildItems.DefaultNonSourceItemTypes);
-                foreach (var item in projectInstance.Items)
-                {
-                    if (fileItemTypes.Contains(item.ItemType))
-                    {
-                        var fullPath = item.GetMetadataValue("FullPath");
-                        if (!string.IsNullOrEmpty(fullPath))
-                        {
-                            ownedFiles.Add(NormalizePath(fullPath));
-                        }
-                    }
-                }
-
-                DeltaBuildItems.AddIncludedFiles(projectInstance, ownedFiles);
+                DeltaBuildItems.AddItemFiles(projectInstance, fileItemTypes, changedFiles, ownedFiles);
+                DeltaBuildItems.AddIncludedFiles(projectInstance, changedFiles, ownedFiles);
 
                 // Remove the files excluded by DeltaBuildExcludeFile
                 var excludedFiles = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-                DeltaBuildItems.AddExcludedFiles(projectInstance, excludedFiles);
+                DeltaBuildItems.AddExcludedFiles(projectInstance, changedFiles, excludedFiles);
                 ownedFiles.ExceptWith(excludedFiles);
             }
             catch (Exception ex)
@@ -194,7 +198,7 @@ internal static class WorkspaceProjectAnalyzer
             // Evaluated outside the try/catch so an invalid condition is reported instead of being ignored.
             // A project that could not be evaluated never matches the condition.
             var matchesWhereCondition = whereCondition is null ||
-                (projectInstance is not null && MatchesWhereCondition(projectInstance, whereCondition));
+                (projectInstance is not null && MatchesWhereCondition(projectInstance, whereCondition, projectOptions));
 
             result[projectPath] = new ProjectInfo
             {
@@ -210,7 +214,7 @@ internal static class WorkspaceProjectAnalyzer
         return result;
     }
 
-    private static bool MatchesWhereCondition(ProjectInstance projectInstance, string whereCondition)
+    private static bool MatchesWhereCondition(ProjectInstance projectInstance, string whereCondition, ProjectOptions projectOptions)
     {
         if (ProjectCondition.Evaluate(projectInstance, whereCondition))
             return true;
@@ -230,7 +234,12 @@ internal static class WorkspaceProjectAnalyzer
                 ["TargetFramework"] = targetFramework,
             };
 
-            var targetFrameworkInstance = new ProjectInstance(projectInstance.FullPath, globalProperties, toolsVersion: null);
+            var targetFrameworkInstance = ProjectInstance.FromFile(projectInstance.FullPath, new ProjectOptions
+            {
+                GlobalProperties = globalProperties,
+                ProjectCollection = projectOptions.ProjectCollection,
+                EvaluationContext = projectOptions.EvaluationContext,
+            });
             if (ProjectCondition.Evaluate(targetFrameworkInstance, whereCondition))
                 return true;
         }

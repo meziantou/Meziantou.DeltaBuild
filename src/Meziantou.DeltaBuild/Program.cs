@@ -45,12 +45,12 @@ internal static class Program
 
         var baseCommitOption = new Option<string?>("--base-commit")
         {
-            Description = "The base commit SHA (default: auto-detected via merge-base)",
+            Description = "The base commit SHA (default: auto-detected via merge-base). If the head contains newer commits of the base branch (e.g. the base branch was merged into the current branch, or a pull request merge commit), the base commit is moved to the latest base-branch commit merged into the head",
         };
 
         var baseBranchOption = new Option<string?>("--base-branch")
         {
-            Description = "The base branch for merge-base detection (default: auto-detected from GitHub Actions PR context or remote)",
+            Description = "The base branch for merge-base detection and base commit refinement (default: auto-detected from GitHub Actions PR context or remote)",
         };
 
         var workingTreeOption = new Option<bool>("--working-tree")

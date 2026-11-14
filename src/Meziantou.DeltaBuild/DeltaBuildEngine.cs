@@ -46,27 +46,44 @@ internal static class DeltaBuildEngine
             }
         }
 
+        var headRef = headCommit ?? "HEAD";
         var baseCommit = options.BaseCommit;
-        if (string.IsNullOrEmpty(baseCommit))
+        var baseBranch = options.BaseBranch;
+        if (string.IsNullOrEmpty(baseBranch))
         {
-            var baseBranch = options.BaseBranch;
+            baseBranch = TryGetGitHubActionsPullRequestBaseBranch();
             if (string.IsNullOrEmpty(baseBranch))
             {
-                baseBranch = TryGetGitHubActionsPullRequestBaseBranch();
-                if (string.IsNullOrEmpty(baseBranch))
+                if (string.IsNullOrEmpty(baseCommit))
                 {
                     baseBranch = await GitHelper.GetDefaultBranchAsync(repositoryPath, cancellationToken);
                     log.WriteLine($"Auto-detected base branch: {baseBranch}");
                 }
                 else
                 {
-                    log.WriteLine($"Detected GitHub Actions pull request context, using base branch: {baseBranch}");
+                    // The base branch is only used to refine the provided base commit, so it is optional
+                    baseBranch = await GitHelper.TryGetDefaultBranchAsync(repositoryPath, cancellationToken);
+                    if (baseBranch is not null)
+                    {
+                        log.WriteLine($"Auto-detected base branch: {baseBranch}");
+                    }
                 }
             }
+            else
+            {
+                log.WriteLine($"Detected GitHub Actions pull request context, using base branch: {baseBranch}");
+            }
+        }
 
-            var mergeBaseRef = headCommit ?? "HEAD";
+        if (string.IsNullOrEmpty(baseCommit))
+        {
             log.WriteLine($"No --base-commit provided, computing merge-base with {baseBranch}");
-            baseCommit = await GitHelper.GetMergeBaseAsync(repositoryPath, mergeBaseRef, baseBranch, cancellationToken);
+            baseCommit = await GitHelper.GetMergeBaseAsync(repositoryPath, headRef, baseBranch!, cancellationToken);
+        }
+
+        if (!string.IsNullOrEmpty(baseBranch))
+        {
+            baseCommit = await RefineBaseCommitAsync(repositoryPath, baseCommit, headRef, baseBranch, log, cancellationToken);
         }
 
         log.WriteLine($"Comparing {baseCommit} -> {(isWorkingTree ? "working-tree" : headCommit)}");
@@ -181,12 +198,24 @@ internal static class DeltaBuildEngine
             changedFiles, hierarchicalTriggerPatterns, projectPaths, repositoryPath);
 
         // Step 7: Build project graph and analyze
+        var normalizedChangedFiles = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var changedFilePathByNormalizedPath = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var file in changedFiles)
+        {
+            var normalizedFile = file.Replace('\\', '/');
+            var absolutePath = FullPath.Combine(repositoryPath, normalizedFile);
+            var normalizedAbsolutePath = ProjectGraphAnalyzer.NormalizePath(absolutePath);
+
+            normalizedChangedFiles.Add(normalizedAbsolutePath);
+            changedFilePathByNormalizedPath.TryAdd(normalizedAbsolutePath, normalizedFile);
+        }
+
         log.WriteLine($"Analyzing projects using engine: {options.Engine}");
         var projectInfos = options.Engine switch
         {
-            AnalysisEngine.StaticGraph => StaticGraphProjectAnalyzer.Analyze(input.InputFilePath, options.WhereCondition, log),
-            AnalysisEngine.RoslynWorkspace => await WorkspaceProjectAnalyzer.AnalyzeAsync(projectPaths, options.WhereCondition, log, cancellationToken),
-            _ => ProjectGraphAnalyzer.Analyze(projectPaths, options.WhereCondition, log),
+            AnalysisEngine.StaticGraph => StaticGraphProjectAnalyzer.Analyze(input.InputFilePath, normalizedChangedFiles, options.WhereCondition, log),
+            AnalysisEngine.RoslynWorkspace => await WorkspaceProjectAnalyzer.AnalyzeAsync(projectPaths, normalizedChangedFiles, options.WhereCondition, log, cancellationToken),
+            _ => ProjectGraphAnalyzer.Analyze(projectPaths, normalizedChangedFiles, options.WhereCondition, log),
         };
 
         if (fullRebuildTriggerFile is not null)
@@ -236,26 +265,11 @@ internal static class DeltaBuildEngine
         }
 
         // Step 8: Determine directly affected projects
-        var normalizedChangedFiles = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        var changedFilePathByNormalizedPath = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
-        foreach (var file in changedFiles)
-        {
-            var normalizedFile = file.Replace('\\', '/');
-            var absolutePath = FullPath.Combine(repositoryPath, normalizedFile);
-            var normalizedAbsolutePath = ProjectGraphAnalyzer.NormalizePath(absolutePath);
-
-            normalizedChangedFiles.Add(normalizedAbsolutePath);
-            changedFilePathByNormalizedPath.TryAdd(normalizedAbsolutePath, normalizedFile);
-        }
-
         var owningProjectsByChangedOwnedFile = new Dictionary<string, List<string>>(StringComparer.OrdinalIgnoreCase);
         foreach (var (projectPath, info) in projectInfos)
         {
             foreach (var ownedFile in info.OwnedFiles)
             {
-                if (!normalizedChangedFiles.Contains(ownedFile))
-                    continue;
-
                 if (!owningProjectsByChangedOwnedFile.TryGetValue(ownedFile, out var owningProjects))
                 {
                     owningProjects = [];
@@ -469,6 +483,33 @@ internal static class DeltaBuildEngine
 
         log.WriteLine($"After --where filter: {result.Count} project(s)");
         return result;
+    }
+
+    /// <summary>
+    /// The head may contain commits of the base branch that are newer than the base commit, for instance when the base
+    /// branch is merged into the current branch to resolve conflicts, or when the head is the merge commit created by
+    /// GitHub for a pull request (<c>refs/pull/N/merge</c>). Diffing from the base commit would report the changes of
+    /// these commits too. Use the latest commit of the base branch that is merged into the head instead, so the diff
+    /// only contains what the head actually changes compared to the base branch.
+    /// </summary>
+    private static async Task<string> RefineBaseCommitAsync(FullPath repositoryPath, string baseCommit, string headRef, string baseBranch, TextWriter log, CancellationToken cancellationToken)
+    {
+        // The base commit can be a tree (e.g. the empty tree to list all files). There is no history to look at.
+        if (!await GitHelper.IsCommitAsync(repositoryPath, baseCommit, cancellationToken))
+            return baseCommit;
+
+        if (!await GitHelper.IsCommitAsync(repositoryPath, baseBranch, cancellationToken))
+        {
+            log.WriteLine($"Base branch {baseBranch} not found, using base commit {baseCommit} as is");
+            return baseCommit;
+        }
+
+        var latestMergedCommit = await GitHelper.GetLatestMergedFirstParentCommitAsync(repositoryPath, baseCommit, headRef, baseBranch, cancellationToken);
+        if (latestMergedCommit is null)
+            return baseCommit;
+
+        log.WriteLine($"Refined base commit {baseCommit} -> {latestMergedCommit} (latest commit of {baseBranch} merged into {headRef})");
+        return latestMergedCommit;
     }
 
     private static string? TryGetGitHubActionsPullRequestBaseBranch()

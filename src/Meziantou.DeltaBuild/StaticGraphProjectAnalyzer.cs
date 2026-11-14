@@ -14,7 +14,8 @@ namespace Meziantou.DeltaBuild;
 /// </summary>
 internal static class StaticGraphProjectAnalyzer
 {
-    public static Dictionary<string, ProjectInfo> Analyze(FullPath inputFilePath, string? whereCondition, TextWriter? log = null)
+    /// <param name="changedFiles">The normalized paths of the changed files. Only these files are recorded in <see cref="ProjectInfo.OwnedFiles"/>.</param>
+    public static Dictionary<string, ProjectInfo> Analyze(FullPath inputFilePath, IReadOnlySet<string> changedFiles, string? whereCondition, TextWriter? log = null)
     {
         log?.WriteLine($"Building static graph from entry point: {inputFilePath}");
 
@@ -70,20 +71,9 @@ internal static class StaticGraphProjectAnalyzer
                 try
                 {
                     var fileItemTypes = DeltaBuildItems.GetItemTypes(node.ProjectInstance, DeltaBuildItems.DefaultItemTypes);
-                    foreach (var item in node.ProjectInstance.Items)
-                    {
-                        if (!fileItemTypes.Contains(item.ItemType))
-                            continue;
-
-                        var fullPath = item.GetMetadataValue("FullPath");
-                        if (!string.IsNullOrEmpty(fullPath))
-                        {
-                            ownedFiles.Add(NormalizePath(fullPath));
-                        }
-                    }
-
-                    DeltaBuildItems.AddIncludedFiles(node.ProjectInstance, ownedFiles);
-                    DeltaBuildItems.AddExcludedFiles(node.ProjectInstance, excludedFiles);
+                    DeltaBuildItems.AddItemFiles(node.ProjectInstance, fileItemTypes, changedFiles, ownedFiles);
+                    DeltaBuildItems.AddIncludedFiles(node.ProjectInstance, changedFiles, ownedFiles);
+                    DeltaBuildItems.AddExcludedFiles(node.ProjectInstance, changedFiles, excludedFiles);
                 }
                 catch (Exception ex)
                 {
@@ -91,12 +81,15 @@ internal static class StaticGraphProjectAnalyzer
                 }
 
                 // Also include the project file itself
-                ownedFiles.Add(projectPath);
+                if (changedFiles.Contains(projectPath))
+                {
+                    ownedFiles.Add(projectPath);
+                }
 
                 // Include imported files (.props, .targets, etc.)
                 foreach (var importPath in node.ProjectInstance.ImportPaths)
                 {
-                    ownedFiles.Add(NormalizePath(importPath));
+                    ProjectGraphAnalyzer.AddIfChanged(importPath, changedFiles, ownedFiles);
                 }
 
                 // Collect forward dependencies
