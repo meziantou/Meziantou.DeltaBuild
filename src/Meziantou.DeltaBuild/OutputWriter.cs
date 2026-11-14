@@ -439,9 +439,9 @@ internal static class OutputWriter
         var outputDir = outputPath.Parent;
         outputPath.CreateParentDirectory();
 
-        var outputFileName = Path.GetFileName(outputPath.Value);
-        var beforeImportPath = options.TraversalBeforeImport ?? (Path.GetFileNameWithoutExtension(outputFileName) + ".before.proj");
-        var afterImportPath = options.TraversalAfterImport ?? (Path.GetFileNameWithoutExtension(outputFileName) + ".after.proj");
+        var outputFileNameWithoutExtension = outputPath.NameWithoutExtension;
+        var beforeImportPath = options.TraversalBeforeImport ?? (outputFileNameWithoutExtension + ".before.proj");
+        var afterImportPath = options.TraversalAfterImport ?? (outputFileNameWithoutExtension + ".after.proj");
         var traversalBeforeImportPath = ToTraversalPath(beforeImportPath);
         var traversalAfterImportPath = ToTraversalPath(afterImportPath);
         var traversalSdk = "Microsoft.Build.Traversal";
