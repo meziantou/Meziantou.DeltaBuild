@@ -14,9 +14,9 @@
   </ItemGroup>
   <!-- Microsoft.Build 18.10+ only targets net11.0 -->
   <ItemGroup Condition="'$(TargetFramework)' == 'net10.0'">
-    <PackageVersion Include="Microsoft.Build" Version="18.9.6" />
-    <PackageVersion Include="Microsoft.Build.Framework" Version="18.9.6" />
-    <PackageVersion Include="Microsoft.NET.StringTools" Version="18.9.6" />
+    <PackageVersion Include="Microsoft.Build" Version="18.11.0" />
+    <PackageVersion Include="Microsoft.Build.Framework" Version="18.11.0" />
+    <PackageVersion Include="Microsoft.NET.StringTools" Version="18.11.0" />
   </ItemGroup>
   <ItemGroup Condition="'$(TargetFramework)' != 'net10.0'">
     <PackageVersion Include="Microsoft.Build" Version="18.12.2" />
