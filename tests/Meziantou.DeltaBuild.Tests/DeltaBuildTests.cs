@@ -3925,6 +3925,202 @@ public sealed class DeltaBuildTests(ITestOutputHelper output) : IAsyncDisposable
         Assert.Contains($"Comparing {mergeBaseCommit} -> {repo.Commits[^1]}", stdout);
     }
 
+    private static readonly Dictionary<string, string?> PullRequestEnvironmentVariables = new(StringComparer.Ordinal)
+    {
+        ["GITHUB_ACTIONS"] = "true",
+        ["GITHUB_EVENT_NAME"] = "pull_request",
+        ["GITHUB_BASE_REF"] = "main",
+    };
+
+    /// <summary>
+    /// Creates a repository with two projects, a "main" branch that changes Other and a "feature" branch that changes App,
+    /// both starting from the same base commit.
+    /// </summary>
+    private async Task<(RepositoryBuilder Repo, string BaseCommit, string MainCommit, string FeatureCommit)> CreateDivergedBranchesRepositoryAsync()
+    {
+        var repo = await CreateRepositoryAsync();
+        repo.CreateCommit(
+            ("src/App/App.csproj", """
+                <Project Sdk="Microsoft.NET.Sdk">
+                  <PropertyGroup>
+                    <TargetFramework>net10.0</TargetFramework>
+                  </PropertyGroup>
+                </Project>
+                """),
+            ("src/App/Program.cs", """
+                Console.WriteLine("base");
+                """),
+            ("src/Other/Other.csproj", """
+                <Project Sdk="Microsoft.NET.Sdk">
+                  <PropertyGroup>
+                    <TargetFramework>net10.0</TargetFramework>
+                  </PropertyGroup>
+                </Project>
+                """),
+            ("src/Other/Class1.cs", """
+                public class Class1 { }
+                """),
+            ("dirs.proj", """
+                <Project Sdk="Microsoft.Build.Traversal">
+                  <ItemGroup>
+                    <ProjectReference Include="src/App/App.csproj" />
+                    <ProjectReference Include="src/Other/Other.csproj" />
+                  </ItemGroup>
+                </Project>
+                """));
+        var baseCommit = repo.Commits[^1];
+
+        repo.Checkout("main", baseCommit)
+            .CreateCommit(("src/Other/Class1.cs", """
+                public class Class1 { public int Value { get; } }
+                """));
+        var mainCommit = repo.Commits[^1];
+
+        repo.Checkout("feature", baseCommit)
+            .CreateCommit(("src/App/Program.cs", """
+                Console.WriteLine("feature");
+                """));
+        var featureCommit = repo.Commits[^1];
+
+        repo.SetRemoteTrackingBranch("main", mainCommit)
+            .SetDefaultRemoteBranch("main");
+
+        return (repo, baseCommit, mainCommit, featureCommit);
+    }
+
+    [Fact]
+    public async Task PullRequestMergeCommit_ExcludesChangesOfNewerBaseBranchCommits()
+    {
+        var (repo, baseCommit, mainCommit, featureCommit) = await CreateDivergedBranchesRepositoryAsync();
+
+        // Same as the refs/pull/N/merge commit checked out by GitHub Actions on pull_request events
+        repo.Checkout(branchName: null, mainCommit)
+            .Merge(featureCommit);
+        var pullRequestMergeCommit = repo.Commits[^1];
+
+        var outputPath = repo.RepositoryPath / "output.txt";
+        var stdout = await RunTool(
+            PullRequestEnvironmentVariables,
+            "generate",
+            "--input", repo.RepositoryPath / "dirs.proj",
+            "--output", outputPath,
+            "--repository", repo.RepositoryPath,
+            "--base-commit", baseCommit);
+
+        Assert.Contains($"Refined base commit {baseCommit} -> {mainCommit} (latest commit of origin/main merged into {pullRequestMergeCommit})", stdout);
+        Assert.Contains($"Comparing {mainCommit} -> {pullRequestMergeCommit}", stdout);
+        var content = await File.ReadAllTextAsync(outputPath, TestContext.Current.CancellationToken);
+        InlineSnapshot.Validate(content.Trim(), """
+            src/App/App.csproj
+            """);
+    }
+
+    [Fact]
+    public async Task PullRequestMergeCommit_RerunAfterPullRequestIsMerged_ExcludesChangesOfBaseBranch()
+    {
+        var (repo, baseCommit, mainCommit, featureCommit) = await CreateDivergedBranchesRepositoryAsync();
+
+        repo.Checkout(branchName: null, mainCommit)
+            .Merge(featureCommit);
+        var pullRequestMergeCommit = repo.Commits[^1];
+
+        // The pull request is merged into main, so the feature commit is now part of the base branch
+        repo.Checkout("main", mainCommit)
+            .Merge(featureCommit);
+        repo.SetRemoteTrackingBranch("main", repo.Commits[^1])
+            .Checkout(branchName: null, pullRequestMergeCommit);
+
+        var outputPath = repo.RepositoryPath / "output.txt";
+        var stdout = await RunTool(
+            PullRequestEnvironmentVariables,
+            "generate",
+            "--input", repo.RepositoryPath / "dirs.proj",
+            "--output", outputPath,
+            "--repository", repo.RepositoryPath,
+            "--base-commit", baseCommit);
+
+        Assert.Contains($"Comparing {mainCommit} -> {pullRequestMergeCommit}", stdout);
+        var content = await File.ReadAllTextAsync(outputPath, TestContext.Current.CancellationToken);
+        InlineSnapshot.Validate(content.Trim(), """
+            src/App/App.csproj
+            """);
+    }
+
+    [Fact]
+    public async Task BaseBranchMergedIntoCurrentBranch_ExcludesChangesOfBaseBranch()
+    {
+        var (repo, baseCommit, mainCommit, _) = await CreateDivergedBranchesRepositoryAsync();
+
+        // Merge main into the feature branch (e.g. to resolve conflicts), then continue working on the branch
+        repo.Merge(mainCommit)
+            .CreateCommit(("src/App/Program.cs", """
+                Console.WriteLine("feature after merge");
+                """));
+
+        var outputPath = repo.RepositoryPath / "output.txt";
+        var stdout = await RunTool(
+            "generate",
+            "--input", repo.RepositoryPath / "dirs.proj",
+            "--output", outputPath,
+            "--repository", repo.RepositoryPath,
+            "--base-commit", baseCommit,
+            "--base-branch", "origin/main");
+
+        Assert.Contains($"Comparing {mainCommit} -> {repo.Commits[^1]}", stdout);
+        var content = await File.ReadAllTextAsync(outputPath, TestContext.Current.CancellationToken);
+        InlineSnapshot.Validate(content.Trim(), """
+            src/App/App.csproj
+            """);
+    }
+
+    [Fact]
+    public async Task BaseBranchMergedIntoCurrentBranch_AutoDetectedBaseCommit_ExcludesChangesOfBaseBranch()
+    {
+        var (repo, _, mainCommit, _) = await CreateDivergedBranchesRepositoryAsync();
+
+        repo.Merge(mainCommit);
+
+        var outputPath = repo.RepositoryPath / "output.txt";
+        var stdout = await RunTool(
+            "generate",
+            "--input", repo.RepositoryPath / "dirs.proj",
+            "--output", outputPath,
+            "--repository", repo.RepositoryPath);
+
+        Assert.Contains($"Comparing {mainCommit} -> {repo.Commits[^1]}", stdout);
+        var content = await File.ReadAllTextAsync(outputPath, TestContext.Current.CancellationToken);
+        InlineSnapshot.Validate(content.Trim(), """
+            src/App/App.csproj
+            """);
+    }
+
+    [Fact]
+    public async Task EmptyTreeBaseCommit_IsNotRefined()
+    {
+        const string EmptyTree = "4b825dc642cb6eb9a060e54bf8d69288fbee4904";
+        var (repo, _, mainCommit, featureCommit) = await CreateDivergedBranchesRepositoryAsync();
+
+        repo.Checkout(branchName: null, mainCommit)
+            .Merge(featureCommit);
+
+        var outputPath = repo.RepositoryPath / "output.txt";
+        var stdout = await RunTool(
+            PullRequestEnvironmentVariables,
+            "generate",
+            "--input", repo.RepositoryPath / "dirs.proj",
+            "--output", outputPath,
+            "--repository", repo.RepositoryPath,
+            "--base-commit", EmptyTree);
+
+        Assert.DoesNotContain("Refined base commit", stdout);
+        Assert.Contains($"Comparing {EmptyTree} -> {repo.Commits[^1]}", stdout);
+        var content = await File.ReadAllTextAsync(outputPath, TestContext.Current.CancellationToken);
+        InlineSnapshot.Validate(content.Trim(), """
+            src/App/App.csproj
+            src/Other/Other.csproj
+            """);
+    }
+
     [Fact]
     public async Task PullRequestEnvironment_IgnoresBaseRefOutsidePullRequestEvents()
     {

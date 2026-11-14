@@ -1,7 +1,7 @@
 <Project Sdk="Meziantou.NET.Sdk">
   <PropertyGroup>
     <OutputType>Exe</OutputType>
-    <Version>1.6.1</Version>
+    <Version>1.7.0</Version>
     <SearchReadmeFileAbove>true</SearchReadmeFileAbove>
 
     <!-- MSBuild evaluates the projects on many threads and allocates a lot. Server GC scales with

@@ -51,6 +51,35 @@ internal sealed class RepositoryBuilder : IAsyncDisposable
         return this;
     }
 
+    public string HeadCommit => RunGit("rev-parse", "HEAD").Trim();
+
+    /// <summary>
+    /// Checks out a new branch starting at the given commit (detached when <paramref name="branchName"/> is null).
+    /// </summary>
+    public RepositoryBuilder Checkout(string? branchName, string commitSha)
+    {
+        if (branchName is null)
+        {
+            RunGit("checkout", "--detach", commitSha);
+        }
+        else
+        {
+            RunGit("checkout", "-B", branchName, commitSha);
+        }
+
+        return this;
+    }
+
+    /// <summary>
+    /// Merges the given commit into the current HEAD with a merge commit (the current HEAD is the first parent).
+    /// </summary>
+    public RepositoryBuilder Merge(string commitSha)
+    {
+        RunGit("merge", "--no-ff", "--no-edit", "-m", $"Merge {commitSha}", commitSha);
+        _commits.Add(HeadCommit);
+        return this;
+    }
+
     public RepositoryBuilder SetRemoteTrackingBranch(string branchName, string commitSha)
     {
         RunGit("update-ref", $"refs/remotes/origin/{branchName}", commitSha);

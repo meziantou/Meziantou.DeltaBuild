@@ -107,8 +107,8 @@ When `--shard-separate` is used, listed projects are spread across shards in dec
 |-----------|-------|---------|-------------|
 | `--repository` | `-r` | `.` (current directory) | Path to the git repository root. |
 | `--head-commit` | | `HEAD` | The head commit SHA to compare. Ignored when `--working-tree` is set. |
-| `--base-commit` | | Auto-detected | The base commit SHA. When omitted, computed via `git merge-base` using `--base-branch`. |
-| `--base-branch` | | Auto-detected from GitHub Actions PR context or remote | The base branch name used for merge-base detection (e.g., `main`, `origin/main`). On GitHub Actions pull request events, defaults to `origin/$GITHUB_BASE_REF`. |
+| `--base-commit` | | Auto-detected | The base commit SHA. When omitted, computed via `git merge-base` using `--base-branch`. When head already contains newer commits of the base branch, the base commit is moved to the latest of them (see [How it works](#how-it-works)). Tree SHAs (e.g. the empty tree) are used as is. |
+| `--base-branch` | | Auto-detected from GitHub Actions PR context or remote | The base branch name used for merge-base detection and base commit refinement (e.g., `main`, `origin/main`). On GitHub Actions pull request events, defaults to `origin/$GITHUB_BASE_REF`. |
 | `--working-tree` | | `false` | Compare the base commit against the current working directory instead of a commit. Includes staged, unstaged, and untracked files. When set, `--head-commit` is ignored. |
 | `--include` | | *(all projects)* | Glob patterns to filter which projects to consider. Repeatable. Only projects matching at least one pattern are included. |
 | `--test-projects-only` | | `false` | Only include projects where the MSBuild property `IsTestProject` is `true`. |
@@ -160,7 +160,7 @@ Meziantou.DeltaBuild generate \
 
 ## How it works
 
-1. **Resolve commits** — Determines the base and head commits. If not provided, head defaults to `HEAD`. Base is computed via `git merge-base` using `origin/$GITHUB_BASE_REF` on GitHub Actions pull request events, otherwise using the default remote branch.
+1. **Resolve commits** — Determines the base and head commits. If not provided, head defaults to `HEAD`. Base is computed via `git merge-base` using `origin/$GITHUB_BASE_REF` on GitHub Actions pull request events, otherwise using the default remote branch. When the base branch is known, the base commit (provided or computed) is then moved to the newest commit of the base branch's first-parent history that is already merged into head. This way, changes coming from the base branch are not reported when the base branch was merged into the current branch (e.g. to resolve conflicts), or when head is the pull request merge commit (`refs/pull/N/merge`) and `--base-commit` is the older `pull_request.base.sha`.
 2. **Get changed files** — Runs `git diff --name-only` between the two commits.
 3. **Parse input** — Reads the solution, traversal, or project file to discover the list of projects.
 4. **Filter projects** — Applies `--include` glob patterns if provided.
