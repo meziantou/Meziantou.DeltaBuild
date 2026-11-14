@@ -158,15 +158,11 @@ internal static class ToolRunner
 #else
         const string Configuration = "Release";
 #endif
-        var outputDirectory = Path.Combine(toolProject, "bin", Configuration);
-        var toolAssembly = Directory.Exists(outputDirectory)
-            ? Directory.GetFiles(outputDirectory, "Meziantou.DeltaBuild.dll", SearchOption.AllDirectories)
-                .Where(path => !path.Contains($"{Path.DirectorySeparatorChar}ref{Path.DirectorySeparatorChar}", StringComparison.OrdinalIgnoreCase))
-                .OrderByDescending(File.GetLastWriteTimeUtc)
-                .FirstOrDefault()
-            : null;
-
-        if (toolAssembly is null)
+        // Use the tool built for the same target framework as the test assembly
+        var targetFramework = Path.GetFileName(testAssemblyDir);
+        var outputDirectory = Path.Combine(toolProject, "bin", Configuration, targetFramework);
+        var toolAssembly = Path.Combine(outputDirectory, "Meziantou.DeltaBuild.dll");
+        if (!File.Exists(toolAssembly))
         {
             throw new FileNotFoundException(
                 $"Tool assembly not found in {outputDirectory}. Ensure the tool project is built before running tests.");

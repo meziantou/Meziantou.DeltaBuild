@@ -5,12 +5,13 @@
   ],
   "packageRules": [
     {
-      "description": "Microsoft.Build 18.10+ only targets net11.0 and the tool targets net10.0",
+      "description": "Microsoft.Build 18.10+ only targets net11.0, so keep the net10.0 versions on 18.9.x",
       "matchPackageNames": [
         "Microsoft.Build",
         "Microsoft.Build.Framework",
         "Microsoft.NET.StringTools"
       ],
+      "matchCurrentVersion": "<18.10.0",
       "allowedVersions": "<18.10.0"
     }
   ]
