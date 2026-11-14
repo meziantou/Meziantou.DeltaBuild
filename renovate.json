@@ -2,5 +2,16 @@
   "$schema": "https://docs.renovatebot.com/renovate-schema.json",
   "extends": [
     "github>meziantou/renovate-config"
+  ],
+  "packageRules": [
+    {
+      "description": "Microsoft.Build 18.10+ only targets net11.0 and the tool targets net10.0",
+      "matchPackageNames": [
+        "Microsoft.Build",
+        "Microsoft.Build.Framework",
+        "Microsoft.NET.StringTools"
+      ],
+      "allowedVersions": "<18.10.0"
+    }
   ]
 }
