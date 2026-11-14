@@ -4024,9 +4024,10 @@ public sealed class DeltaBuildTests(ITestOutputHelper output) : IAsyncDisposable
             .Merge(featureCommit);
         var pullRequestMergeCommit = repo.Commits[^1];
 
-        // The pull request is merged into main, so the feature commit is now part of the base branch
+        // The pull request is merged into main, so the feature commit is now part of the base branch.
+        // Use a different message so the merge commit is not identical to the pull request merge commit.
         repo.Checkout("main", mainCommit)
-            .Merge(featureCommit);
+            .Merge(featureCommit, "Merge pull request");
         repo.SetRemoteTrackingBranch("main", repo.Commits[^1])
             .Checkout(branchName: null, pullRequestMergeCommit);
 

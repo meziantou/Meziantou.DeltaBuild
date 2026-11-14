@@ -73,9 +73,9 @@ internal sealed class RepositoryBuilder : IAsyncDisposable
     /// <summary>
     /// Merges the given commit into the current HEAD with a merge commit (the current HEAD is the first parent).
     /// </summary>
-    public RepositoryBuilder Merge(string commitSha)
+    public RepositoryBuilder Merge(string commitSha, string? message = null)
     {
-        RunGit("merge", "--no-ff", "--no-edit", "-m", $"Merge {commitSha}", commitSha);
+        RunGit("merge", "--no-ff", "--no-edit", "-m", message ?? $"Merge {commitSha}", commitSha);
         _commits.Add(HeadCommit);
         return this;
     }
