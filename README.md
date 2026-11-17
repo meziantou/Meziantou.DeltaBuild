@@ -167,7 +167,7 @@ Meziantou.DeltaBuild generate \
 5. **Check full-rebuild triggers** — If any changed file matches a `--full-rebuild-trigger` pattern, all projects are included and analysis stops.
 6. **Check hierarchical-rebuild triggers** — For each changed file matching a `--hierarchical-rebuild-trigger` pattern, projects in the same folder hierarchy are marked as affected. For example, `src/nuget.config` affects projects under `src/`, while a root-level `nuget.config` affects all projects.
 7. **Analyze project graph** — Uses the selected engine to build the dependency graph and determine which files each project owns (source files, imports, `.props`, `.targets`, `.editorconfig`, `.globalconfig`, etc.).
-8. **Determine directly affected projects** — A project is directly affected if any of its owned files appears in the changed file list, or if it was flagged by a hierarchical trigger.
+8. **Determine directly affected projects** — A project is directly affected if any of its owned files appears in the changed file list, or if it was flagged by a hierarchical trigger. A changed `Directory.Packages.props` file only affects the projects using one of the changed packages (see [Central Package Management](#central-package-management)).
 9. **Expand impacted projects** — Walks up the dependency graph to include transitive dependents, and applies `--project-bundle` rules so if one project in a bundle is affected, all bundle members are included too.
 10. **Filter affected projects (optional)** — When `--test-projects-only` is set, keeps only projects with `IsTestProject=true`. When `--where` is set, keeps only projects for which the MSBuild condition is true.
 11. **Write output** — Produces the filtered solution/build file containing only the final affected projects. When `--shard` and `--total-shards` are set, only the selected shard is written to the provided `--output` path. If `--no-output-if-empty` is set and no project is affected in the selected result, the output file is skipped/deleted.
@@ -199,6 +199,14 @@ DeltaBuild tracks the following MSBuild item types as owned files for each proje
 - **Project file itself** — The `.csproj`/`.fsproj`/`.vbproj` file
 
 The `RoslynWorkspace` engine additionally tracks files exposed through Roslyn's `Documents`, `AdditionalDocuments`, and `AnalyzerConfigDocuments` collections.
+
+### Central Package Management
+
+`Directory.Packages.props` is imported by every project, but a change to it often only updates a few `<PackageVersion>` items. DeltaBuild compares the base and head versions of the file:
+
+- When only `PackageVersion` items were added, removed, or modified, a project importing the file is affected only if it references one of the changed packages through a `PackageReference` or `PackageDownload` item, for any of its target frameworks. Projects depending on an affected project are included as usual.
+- When anything else changed (properties, `GlobalPackageReference` items, imports, …), when a package ID cannot be determined statically (e.g. `Include="$(MyPackage)"`), or when the file was added, all the projects importing the file are affected.
+- When `CentralPackageTransitivePinningEnabled` is `true`, the `PackageVersion` items also apply to transitive dependencies. DeltaBuild reads the project's NuGet assets file (`obj/project.assets.json`) to find the packages it uses transitively. If the assets file doesn't exist or is older than the project file or `Directory.Packages.props` (i.e. the repository was not restored after checkout), the project is considered affected.
 
 ### Customizing tracked items
 

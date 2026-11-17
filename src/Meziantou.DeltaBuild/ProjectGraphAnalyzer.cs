@@ -48,6 +48,7 @@ internal static class ProjectGraphAnalyzer
             var referencingProjectPaths = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
             var isTestProject = false;
             var matchesWhereCondition = whereCondition is null;
+            var packages = new PackageReferenceCollector();
 
             foreach (var node in nodes)
             {
@@ -74,6 +75,8 @@ internal static class ProjectGraphAnalyzer
                 {
                     log?.WriteLine($"Warning: Failed to extract file items from {projectPath}: {ex.Message}");
                 }
+
+                packages.Add(node.ProjectInstance);
 
                 // Also include the project file itself
                 if (changedFiles.Contains(projectPath))
@@ -111,6 +114,9 @@ internal static class ProjectGraphAnalyzer
                 ReferencingProjectPaths = referencingProjectPaths,
                 IsTestProject = isTestProject,
                 MatchesWhereCondition = matchesWhereCondition,
+                PackageReferences = packages.GetPackageReferences(),
+                UsesTransitivePinning = packages.UsesTransitivePinning,
+                ProjectAssetsFile = packages.ProjectAssetsFile,
             };
         }
 

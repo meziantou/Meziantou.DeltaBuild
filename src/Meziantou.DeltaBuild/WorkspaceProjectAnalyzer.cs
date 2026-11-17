@@ -111,6 +111,7 @@ internal static class WorkspaceProjectAnalyzer
             var referencedProjectPaths = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
             var referencingProjectPaths = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
             var isTestProject = false;
+            var packages = new PackageReferenceCollector();
 
             // Include the project file itself
             if (changedFiles.Contains(projectPath))
@@ -189,10 +190,22 @@ internal static class WorkspaceProjectAnalyzer
                 var excludedFiles = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
                 DeltaBuildItems.AddExcludedFiles(projectInstance, changedFiles, excludedFiles);
                 ownedFiles.ExceptWith(excludedFiles);
+
+                // The outer build of a multi-targeted project doesn't see the packages referenced per target framework.
+                // Evaluating each target framework is only needed when a changed Directory.Packages.props is imported.
+                packages.Add(projectInstance);
+                if (ownedFiles.Any(CentralPackageVersionsDiff.IsCentralPackageVersionsFile))
+                {
+                    foreach (var targetFrameworkInstance in GetTargetFrameworkInstances(projectInstance, projectOptions))
+                    {
+                        packages.Add(targetFrameworkInstance);
+                    }
+                }
             }
             catch (Exception ex)
             {
                 log?.WriteLine($"  Warning: Could not evaluate imports for {projectPath}: {ex.Message}");
+                packages.MarkIncomplete();
             }
 
             // Evaluated outside the try/catch so an invalid condition is reported instead of being ignored.
@@ -208,6 +221,9 @@ internal static class WorkspaceProjectAnalyzer
                 ReferencingProjectPaths = referencingProjectPaths,
                 IsTestProject = isTestProject,
                 MatchesWhereCondition = matchesWhereCondition,
+                PackageReferences = packages.GetPackageReferences(),
+                UsesTransitivePinning = packages.UsesTransitivePinning,
+                ProjectAssetsFile = packages.ProjectAssetsFile,
             };
         }
 
@@ -221,8 +237,22 @@ internal static class WorkspaceProjectAnalyzer
 
         // A multi-targeted project is evaluated as its outer build, which doesn't see the properties
         // set per target framework. Evaluate each target framework like the graph-based engines do.
+        foreach (var targetFrameworkInstance in GetTargetFrameworkInstances(projectInstance, projectOptions))
+        {
+            if (ProjectCondition.Evaluate(targetFrameworkInstance, whereCondition))
+                return true;
+        }
+
+        return false;
+    }
+
+    /// <summary>
+    /// Evaluates each target framework of a multi-targeted project. Returns nothing for a project that is not multi-targeted.
+    /// </summary>
+    private static IEnumerable<ProjectInstance> GetTargetFrameworkInstances(ProjectInstance projectInstance, ProjectOptions projectOptions)
+    {
         if (!string.IsNullOrEmpty(projectInstance.GetPropertyValue("TargetFramework")))
-            return false;
+            yield break;
 
         var targetFrameworks = projectInstance.GetPropertyValue("TargetFrameworks")
             .Split(';', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries);
@@ -234,17 +264,13 @@ internal static class WorkspaceProjectAnalyzer
                 ["TargetFramework"] = targetFramework,
             };
 
-            var targetFrameworkInstance = ProjectInstance.FromFile(projectInstance.FullPath, new ProjectOptions
+            yield return ProjectInstance.FromFile(projectInstance.FullPath, new ProjectOptions
             {
                 GlobalProperties = globalProperties,
                 ProjectCollection = projectOptions.ProjectCollection,
                 EvaluationContext = projectOptions.EvaluationContext,
             });
-            if (ProjectCondition.Evaluate(targetFrameworkInstance, whereCondition))
-                return true;
         }
-
-        return false;
     }
 
     private static string NormalizePath(string path)

@@ -5634,4 +5634,321 @@ public sealed class DeltaBuildTests(ITestOutputHelper output) : IAsyncDisposable
         Assert.Contains("The --where condition '$(PublishAot) ==' is invalid", result.Stderr + result.Stdout);
         Assert.False(File.Exists(outputPath));
     }
+
+    private static string CreateDirectoryPackagesProps(string packageAVersion = "1.0.0", string properties = "", string items = "")
+    {
+        return $"""
+            <Project>
+              <PropertyGroup>
+                <ManagePackageVersionsCentrally>true</ManagePackageVersionsCentrally>{properties}
+              </PropertyGroup>
+              <ItemGroup>
+                <PackageVersion Include="PkgA" Version="{packageAVersion}" />
+                <PackageVersion Include="PkgB" Version="1.0.0" />{items}
+              </ItemGroup>
+              <ItemGroup Condition="'$(TargetFramework)' == 'net9.0'">
+                <PackageVersion Include="PkgC" Version="1.0.0" />
+              </ItemGroup>
+            </Project>
+            """;
+    }
+
+    /// <summary>
+    /// Creates a repository using Central Package Management with the following projects:
+    /// Lib1 references PkgA, App1 references Lib1, App2 references PkgB, App3 has no package,
+    /// and Multi references PkgC for net9.0 only.
+    /// </summary>
+    private async Task<RepositoryBuilder> CreateCentralPackageManagementRepositoryAsync(string properties = "")
+    {
+        var repo = await CreateRepositoryAsync();
+        repo.CreateCommit(
+            ("global.json", """
+                {
+                  "msbuild-sdks": {
+                    "Microsoft.Build.Traversal": "4.1.82"
+                  }
+                }
+                """),
+            ("Directory.Packages.props", CreateDirectoryPackagesProps(properties: properties)),
+            ("src/Lib1/Lib1.csproj", """
+                <Project Sdk="Microsoft.NET.Sdk">
+                  <PropertyGroup>
+                    <TargetFramework>net10.0</TargetFramework>
+                  </PropertyGroup>
+                  <ItemGroup>
+                    <PackageReference Include="PkgA" />
+                  </ItemGroup>
+                </Project>
+                """),
+            ("src/App1/App1.csproj", """
+                <Project Sdk="Microsoft.NET.Sdk">
+                  <PropertyGroup>
+                    <TargetFramework>net10.0</TargetFramework>
+                  </PropertyGroup>
+                  <ItemGroup>
+                    <ProjectReference Include="../Lib1/Lib1.csproj" />
+                  </ItemGroup>
+                </Project>
+                """),
+            ("src/App2/App2.csproj", """
+                <Project Sdk="Microsoft.NET.Sdk">
+                  <PropertyGroup>
+                    <TargetFramework>net10.0</TargetFramework>
+                  </PropertyGroup>
+                  <ItemGroup>
+                    <PackageReference Include="PkgB" />
+                  </ItemGroup>
+                </Project>
+                """),
+            ("src/App3/App3.csproj", """
+                <Project Sdk="Microsoft.NET.Sdk">
+                  <PropertyGroup>
+                    <TargetFramework>net10.0</TargetFramework>
+                  </PropertyGroup>
+                </Project>
+                """),
+            ("src/Multi/Multi.csproj", """
+                <Project Sdk="Microsoft.NET.Sdk">
+                  <PropertyGroup>
+                    <TargetFrameworks>net10.0;net9.0</TargetFrameworks>
+                  </PropertyGroup>
+                  <ItemGroup Condition="'$(TargetFramework)' == 'net9.0'">
+                    <PackageReference Include="PkgC" />
+                  </ItemGroup>
+                </Project>
+                """),
+            ("dirs.proj", """
+                <Project Sdk="Microsoft.Build.Traversal">
+                  <ItemGroup>
+                    <ProjectReference Include="src/Lib1/Lib1.csproj" />
+                    <ProjectReference Include="src/App1/App1.csproj" />
+                    <ProjectReference Include="src/App2/App2.csproj" />
+                    <ProjectReference Include="src/App3/App3.csproj" />
+                    <ProjectReference Include="src/Multi/Multi.csproj" />
+                  </ItemGroup>
+                </Project>
+                """)
+        );
+
+        return repo;
+    }
+
+    private async Task<string> RunCentralPackageManagementTool(RepositoryBuilder repo, params string[] additionalArguments)
+    {
+        var outputPath = repo.RepositoryPath / "output.txt";
+        var stdout = await RunTool(
+        [
+            "generate",
+            "--input", repo.RepositoryPath / "dirs.proj",
+            "--output", outputPath,
+            "--repository", repo.RepositoryPath,
+            .. additionalArguments,
+        ]);
+
+        output.WriteLine(stdout);
+        var content = await File.ReadAllTextAsync(outputPath, TestContext.Current.CancellationToken);
+        return content.Trim();
+    }
+
+    [Theory]
+    [InlineData("MSBuild")]
+    [InlineData("RoslynWorkspace")]
+    [InlineData("StaticGraph")]
+    public async Task CentralPackageManagement_PackageVersionChanged_OnlyProjectsUsingThePackageIncluded(string engine)
+    {
+        var repo = await CreateCentralPackageManagementRepositoryAsync();
+        repo.CreateCommit(("Directory.Packages.props", CreateDirectoryPackagesProps(packageAVersion: "2.0.0")));
+
+        var content = await RunCentralPackageManagementTool(repo,
+            "--base-commit", repo.Commits[^2],
+            "--head-commit", repo.Commits[^1],
+            "--engine", engine);
+
+        // Lib1 references PkgA, and App1 depends on Lib1
+        InlineSnapshot.Validate(content, """
+            src/App1/App1.csproj
+            src/Lib1/Lib1.csproj
+            """);
+    }
+
+    [Theory]
+    [InlineData("MSBuild")]
+    [InlineData("RoslynWorkspace")]
+    [InlineData("StaticGraph")]
+    public async Task CentralPackageManagement_PackageReferencedForOneTargetFramework_ProjectIncluded(string engine)
+    {
+        var repo = await CreateCentralPackageManagementRepositoryAsync();
+        repo.CreateCommit(("Directory.Packages.props", CreateDirectoryPackagesProps().Replace("""<PackageVersion Include="PkgC" Version="1.0.0" />""", """<PackageVersion Include="PkgC" Version="2.0.0" />""", StringComparison.Ordinal)));
+
+        var content = await RunCentralPackageManagementTool(repo,
+            "--base-commit", repo.Commits[^2],
+            "--head-commit", repo.Commits[^1],
+            "--engine", engine);
+
+        InlineSnapshot.Validate(content, """
+            src/Multi/Multi.csproj
+            """);
+    }
+
+    [Fact]
+    public async Task CentralPackageManagement_UnusedPackageVersionAdded_NoProjectIncluded()
+    {
+        var repo = await CreateCentralPackageManagementRepositoryAsync();
+        repo.CreateCommit(("Directory.Packages.props", CreateDirectoryPackagesProps(items: """
+
+                <!-- New package -->
+                <PackageVersion Include="PkgD" Version="1.0.0" />
+            """)));
+
+        var content = await RunCentralPackageManagementTool(repo,
+            "--base-commit", repo.Commits[^2],
+            "--head-commit", repo.Commits[^1]);
+
+        Assert.Equal("", content);
+    }
+
+    [Fact]
+    public async Task CentralPackageManagement_PropertyChanged_AllProjectsIncluded()
+    {
+        var repo = await CreateCentralPackageManagementRepositoryAsync();
+        repo.CreateCommit(("Directory.Packages.props", CreateDirectoryPackagesProps(packageAVersion: "2.0.0", properties: """
+
+                <LangVersion>latest</LangVersion>
+            """)));
+
+        var content = await RunCentralPackageManagementTool(repo,
+            "--base-commit", repo.Commits[^2],
+            "--head-commit", repo.Commits[^1]);
+
+        InlineSnapshot.Validate(content, """
+            src/App1/App1.csproj
+            src/App2/App2.csproj
+            src/App3/App3.csproj
+            src/Lib1/Lib1.csproj
+            src/Multi/Multi.csproj
+            """);
+    }
+
+    [Fact]
+    public async Task CentralPackageManagement_GlobalPackageReferenceAdded_AllProjectsIncluded()
+    {
+        var repo = await CreateCentralPackageManagementRepositoryAsync();
+        repo.CreateCommit(("Directory.Packages.props", CreateDirectoryPackagesProps(items: """
+
+                <GlobalPackageReference Include="PkgD" Version="1.0.0" />
+            """)));
+
+        var content = await RunCentralPackageManagementTool(repo,
+            "--base-commit", repo.Commits[^2],
+            "--head-commit", repo.Commits[^1]);
+
+        InlineSnapshot.Validate(content, """
+            src/App1/App1.csproj
+            src/App2/App2.csproj
+            src/App3/App3.csproj
+            src/Lib1/Lib1.csproj
+            src/Multi/Multi.csproj
+            """);
+    }
+
+    [Fact]
+    public async Task CentralPackageManagement_TransitivePinningWithoutAssetsFile_AllProjectsIncluded()
+    {
+        var pinning = """
+
+                <CentralPackageTransitivePinningEnabled>true</CentralPackageTransitivePinningEnabled>
+            """;
+        var repo = await CreateCentralPackageManagementRepositoryAsync(pinning);
+        repo.CreateCommit(("Directory.Packages.props", CreateDirectoryPackagesProps(packageAVersion: "2.0.0", properties: pinning)));
+
+        var content = await RunCentralPackageManagementTool(repo,
+            "--base-commit", repo.Commits[^2],
+            "--head-commit", repo.Commits[^1]);
+
+        InlineSnapshot.Validate(content, """
+            src/App1/App1.csproj
+            src/App2/App2.csproj
+            src/App3/App3.csproj
+            src/Lib1/Lib1.csproj
+            src/Multi/Multi.csproj
+            """);
+    }
+
+    [Fact]
+    public async Task CentralPackageManagement_TransitivePinningWithAssetsFile_ProjectsUsingThePackageTransitivelyIncluded()
+    {
+        var pinning = """
+
+                <CentralPackageTransitivePinningEnabled>true</CentralPackageTransitivePinningEnabled>
+            """;
+        var repo = await CreateCentralPackageManagementRepositoryAsync(pinning);
+        repo.CreateCommit(("Directory.Packages.props", CreateDirectoryPackagesProps(packageAVersion: "2.0.0", properties: pinning)));
+
+        // Simulate a NuGet restore: App2 gets PkgA transitively from PkgB, App3 and Multi don't use PkgA
+        repo.WriteFiles(
+            ("src/App2/obj/project.assets.json", """
+                {
+                  "version": 3,
+                  "libraries": {
+                    "PkgA/2.0.0": { "type": "package" },
+                    "PkgB/1.0.0": { "type": "package" }
+                  }
+                }
+                """),
+            ("src/App3/obj/project.assets.json", """
+                {
+                  "version": 3,
+                  "libraries": {}
+                }
+                """),
+            ("src/Multi/obj/project.assets.json", """
+                {
+                  "version": 3,
+                  "libraries": {
+                    "PkgC/1.0.0": { "type": "package" },
+                    "Lib0/1.0.0": { "type": "project" }
+                  }
+                }
+                """));
+
+        var content = await RunCentralPackageManagementTool(repo,
+            "--base-commit", repo.Commits[^2],
+            "--head-commit", repo.Commits[^1]);
+
+        InlineSnapshot.Validate(content, """
+            src/App1/App1.csproj
+            src/App2/App2.csproj
+            src/Lib1/Lib1.csproj
+            """);
+
+        // An assets file older than Directory.Packages.props may not reflect the current dependencies
+        File.SetLastWriteTimeUtc(repo.RepositoryPath / "src/App3/obj/project.assets.json", new DateTime(2000, 1, 1, 0, 0, 0, DateTimeKind.Utc));
+
+        content = await RunCentralPackageManagementTool(repo,
+            "--base-commit", repo.Commits[^2],
+            "--head-commit", repo.Commits[^1]);
+
+        InlineSnapshot.Validate(content, """
+            src/App1/App1.csproj
+            src/App2/App2.csproj
+            src/App3/App3.csproj
+            src/Lib1/Lib1.csproj
+            """);
+    }
+
+    [Fact]
+    public async Task CentralPackageManagement_WorkingTree_PackageVersionChanged_OnlyProjectsUsingThePackageIncluded()
+    {
+        var repo = await CreateCentralPackageManagementRepositoryAsync();
+        repo.WriteFiles(("Directory.Packages.props", CreateDirectoryPackagesProps(packageAVersion: "2.0.0")));
+
+        var content = await RunCentralPackageManagementTool(repo,
+            "--base-commit", repo.Commits[^1],
+            "--working-tree");
+
+        InlineSnapshot.Validate(content, """
+            src/App1/App1.csproj
+            src/Lib1/Lib1.csproj
+            """);
+    }
 }
