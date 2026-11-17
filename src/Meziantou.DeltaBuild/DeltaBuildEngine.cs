@@ -1,3 +1,4 @@
+using System.Text.Json;
 using Meziantou.Framework;
 using Meziantou.Framework.Globbing;
 
@@ -210,6 +211,9 @@ internal static class DeltaBuildEngine
             changedFilePathByNormalizedPath.TryAdd(normalizedAbsolutePath, normalizedFile);
         }
 
+        var changedPackagesByCentralPackageFile = await GetChangedPackagesByCentralPackageFileAsync(
+            changedFilePathByNormalizedPath, repositoryPath, baseCommit, headCommit, log, cancellationToken);
+
         log.WriteLine($"Analyzing projects using engine: {options.Engine}");
         var projectInfos = options.Engine switch
         {
@@ -290,18 +294,32 @@ internal static class DeltaBuildEngine
             reasonByProjectPath.TryAdd(projectPath, $"hierarchical file '{triggerFile}' changed");
         }
 
+        var transitivePackagesCache = new Dictionary<string, HashSet<string>?>(StringComparer.OrdinalIgnoreCase);
         foreach (var (ownedFile, owningProjects) in owningProjectsByChangedOwnedFile)
         {
             var changedFilePath = changedFilePathByNormalizedPath.TryGetValue(ownedFile, out var filePath)
                 ? filePath
                 : ToRepositoryRelativePath(FullPath.FromPath(ownedFile), repositoryPath);
 
-            var reason = owningProjects.Count > 1
+            var defaultReason = owningProjects.Count > 1
                 ? $"global file '{changedFilePath}' changed"
                 : $"file '{changedFilePath}' changed";
 
+            changedPackagesByCentralPackageFile.TryGetValue(ownedFile, out var changedPackages);
+
             foreach (var projectPath in owningProjects)
             {
+                var reason = defaultReason;
+                if (changedPackages is not null)
+                {
+                    // Only the projects using one of the changed packages are affected by the Directory.Packages.props change
+                    var packageReason = GetCentralPackageChangeReason(projectInfos[projectPath], changedPackages, ownedFile, changedFilePath, transitivePackagesCache);
+                    if (packageReason is null)
+                        continue;
+
+                    reason = packageReason;
+                }
+
                 directlyAffected.Add(projectPath);
 
                 if (reasonByProjectPath.TryGetValue(projectPath, out var existingReason))
@@ -407,6 +425,153 @@ internal static class DeltaBuildEngine
         await OutputWriter.WriteAsync(options, input, affectedInputProjects, log, cancellationToken);
 
         return 0;
+    }
+
+    /// <summary>
+    /// For each changed <c>Directory.Packages.props</c> file, computes the IDs of the packages whose <c>PackageVersion</c> items changed.
+    /// The value is <see langword="null"/> when the change cannot be limited to a set of packages, in which case every project
+    /// importing the file is affected.
+    /// </summary>
+    private static async Task<Dictionary<string, HashSet<string>?>> GetChangedPackagesByCentralPackageFileAsync(
+        Dictionary<string, string> changedFilePathByNormalizedPath,
+        FullPath repositoryPath,
+        string baseCommit,
+        string? headCommit,
+        TextWriter log,
+        CancellationToken cancellationToken)
+    {
+        var result = new Dictionary<string, HashSet<string>?>(StringComparer.OrdinalIgnoreCase);
+        foreach (var (normalizedPath, relativePath) in changedFilePathByNormalizedPath)
+        {
+            if (!CentralPackageVersionsDiff.IsCentralPackageVersionsFile(relativePath))
+                continue;
+
+            var baseContent = await GitHelper.TryGetFileContentAsync(repositoryPath, baseCommit, relativePath, cancellationToken);
+            string? headContent;
+            if (headCommit is null)
+            {
+                headContent = File.Exists(normalizedPath) ? await File.ReadAllTextAsync(normalizedPath, cancellationToken) : null;
+            }
+            else
+            {
+                headContent = await GitHelper.TryGetFileContentAsync(repositoryPath, headCommit, relativePath, cancellationToken);
+            }
+
+            var changedPackages = CentralPackageVersionsDiff.GetChangedPackages(baseContent, headContent);
+            if (changedPackages is null)
+            {
+                log.WriteLine($"Cannot determine the packages changed in '{relativePath}', all the projects importing it are affected.");
+            }
+            else if (changedPackages.Count == 0)
+            {
+                log.WriteLine($"No package version changed in '{relativePath}'.");
+            }
+            else
+            {
+                log.WriteLine($"Package versions changed in '{relativePath}': {string.Join(", ", changedPackages.Order(StringComparer.OrdinalIgnoreCase))}");
+            }
+
+            result[normalizedPath] = changedPackages;
+        }
+
+        return result;
+    }
+
+    /// <summary>
+    /// Returns the reason why a project is affected by the change of some <c>PackageVersion</c> items of a <c>Directory.Packages.props</c> file,
+    /// or <see langword="null"/> if the project doesn't use any of the changed packages.
+    /// </summary>
+    private static string? GetCentralPackageChangeReason(
+        ProjectInfo projectInfo,
+        HashSet<string> changedPackages,
+        string centralPackageFilePath,
+        string centralPackageFileDisplayPath,
+        Dictionary<string, HashSet<string>?> transitivePackagesCache)
+    {
+        if (projectInfo.PackageReferences is null)
+            return $"global file '{centralPackageFileDisplayPath}' changed";
+
+        var directPackage = changedPackages
+            .Where(projectInfo.PackageReferences.Contains)
+            .Order(StringComparer.OrdinalIgnoreCase)
+            .FirstOrDefault();
+        if (directPackage is not null)
+            return $"package '{directPackage}' changed in '{centralPackageFileDisplayPath}'";
+
+        if (!projectInfo.UsesTransitivePinning)
+            return null;
+
+        // With transitive pinning, the PackageVersion items also apply to the transitive dependencies.
+        // They are only known from the assets file generated by NuGet restore.
+        var transitivePackages = GetTransitivePackages(projectInfo, centralPackageFilePath, transitivePackagesCache);
+        if (transitivePackages is null)
+            return $"transitive pinning is enabled and '{centralPackageFileDisplayPath}' changed";
+
+        var transitivePackage = changedPackages
+            .Where(transitivePackages.Contains)
+            .Order(StringComparer.OrdinalIgnoreCase)
+            .FirstOrDefault();
+        if (transitivePackage is not null)
+            return $"transitive package '{transitivePackage}' changed in '{centralPackageFileDisplayPath}'";
+
+        return null;
+    }
+
+    /// <summary>
+    /// Reads the packages of the project from its NuGet assets file (<c>project.assets.json</c>).
+    /// Returns <see langword="null"/> when the file doesn't exist, cannot be read, or is older than the project file or
+    /// the <c>Directory.Packages.props</c> file, as it may not reflect the current dependencies.
+    /// </summary>
+    private static HashSet<string>? GetTransitivePackages(
+        ProjectInfo projectInfo,
+        string centralPackageFilePath,
+        Dictionary<string, HashSet<string>?> cache)
+    {
+        var assetsFile = projectInfo.ProjectAssetsFile;
+        if (assetsFile is null || !File.Exists(assetsFile))
+            return null;
+
+        var assetsFileLastWriteTime = File.GetLastWriteTimeUtc(assetsFile);
+        if (assetsFileLastWriteTime < File.GetLastWriteTimeUtc(projectInfo.ProjectPath) ||
+            assetsFileLastWriteTime < File.GetLastWriteTimeUtc(centralPackageFilePath))
+        {
+            return null;
+        }
+
+        if (cache.TryGetValue(assetsFile, out var cachedPackages))
+            return cachedPackages;
+
+        HashSet<string>? packages = null;
+        try
+        {
+            using var stream = File.OpenRead(assetsFile);
+            using var document = JsonDocument.Parse(stream);
+            if (document.RootElement.ValueKind is JsonValueKind.Object &&
+                document.RootElement.TryGetProperty("libraries", out var libraries) &&
+                libraries.ValueKind is JsonValueKind.Object)
+            {
+                packages = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+                foreach (var library in libraries.EnumerateObject())
+                {
+                    if (library.Value.ValueKind is not JsonValueKind.Object ||
+                        !library.Value.TryGetProperty("type", out var type) ||
+                        !string.Equals(type.GetString(), "package", StringComparison.OrdinalIgnoreCase))
+                    {
+                        continue;
+                    }
+
+                    var separatorIndex = library.Name.IndexOf('/', StringComparison.Ordinal);
+                    packages.Add(separatorIndex >= 0 ? library.Name[..separatorIndex] : library.Name);
+                }
+            }
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or JsonException)
+        {
+            packages = null;
+        }
+
+        cache[assetsFile] = packages;
+        return packages;
     }
 
     private static void ValidateShardOptions(DeltaBuildOptions options)

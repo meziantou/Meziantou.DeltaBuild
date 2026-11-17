@@ -130,6 +130,22 @@ internal static class GitHelper
         return [.. files];
     }
 
+    /// <summary>
+    /// Gets the content of a file at the given revision, or <see langword="null"/> if the file doesn't exist at this revision.
+    /// </summary>
+    /// <param name="path">The path of the file relative to the root of the repository.</param>
+    public static async Task<string?> TryGetFileContentAsync(string repositoryPath, string revision, string path, CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            return await RunGitAsync(repositoryPath, ["cat-file", "blob", revision + ":" + path.Replace('\\', '/')], cancellationToken);
+        }
+        catch (InvalidOperationException)
+        {
+            return null;
+        }
+    }
+
     public static async Task<string> RunGitAsync(string workingDirectory, string[] arguments, CancellationToken cancellationToken = default)
     {
         var psi = new ProcessStartInfo
